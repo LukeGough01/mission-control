@@ -1030,34 +1030,1235 @@ app.post('/api/council', async (req, res) => {
   res.end();
 });
 
-// ─── Stub Pages ──────────────────────────────────────────────────────────────
-const stubPage = (title, navId) => `<!DOCTYPE html><html lang="en"><head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} — Mission Control</title>
-  ${NAV_STYLE}
-  <style>
-    .coming-soon {
-      text-align: center; padding: 6rem 2rem;
-    }
-    .coming-soon h1 {
-      font-size: 2.5rem; font-weight: 800;
-      background: linear-gradient(135deg, #00d4ff, #7b2ff7);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-      margin-bottom: 1rem;
-    }
-    .coming-soon p { color: #5a6a8a; }
-  </style>
-</head><body>
-  ${NAV_HTML}
-  <div class="container"><div class="coming-soon">
-    <h1>${title}</h1><p>Coming soon.</p>
-  </div></div>
-  <script>document.getElementById('${navId}').classList.add('active');</script>
-</body></html>`;
+// ─── YouTube API Configuration ───────────────────────────────────────────────
+const YT_API_KEY = process.env.YOUTUBE_API_KEY || 'AIzaSyBNe1tR9xOaVvZ8qH3X2wY1pQ4rS6tU7vW';
 
-app.get('/growth', (req, res) => res.send(stubPage('Growth', 'nav-growth')));
-app.get('/pipeline', (req, res) => res.send(stubPage('Pipeline', 'nav-pipeline')));
-app.get('/content', (req, res) => res.send(stubPage('Content', 'nav-content')));
+// ─── YouTube API Proxy Endpoints ─────────────────────────────────────────────
+app.get('/api/youtube/search', async (req, res) => {
+  try {
+    const q = req.query.q;
+    if (!q) return res.status(400).json({ error: 'Query required' });
+    const url = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&maxResults=5&q=' + encodeURIComponent(q) + '&key=' + YT_API_KEY;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data.error) return res.status(400).json({ error: data.error.message });
+    const channels = (data.items || []).map(i => ({
+      id: i.snippet.channelId,
+      title: i.snippet.title,
+      description: i.snippet.description,
+      thumbnail: i.snippet.thumbnails?.default?.url
+    }));
+    res.json({ channels });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/youtube/dashboard', async (req, res) => {
+  try {
+    const channelId = req.query.channelId;
+    if (!channelId) return res.status(400).json({ error: 'channelId required' });
+
+    // Fetch channel stats
+    const chUrl = 'https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings&id=' + encodeURIComponent(channelId) + '&key=' + YT_API_KEY;
+    const chResp = await fetch(chUrl);
+    const chData = await chResp.json();
+    if (chData.error) return res.status(400).json({ error: chData.error.message });
+    if (!chData.items || chData.items.length === 0) return res.status(404).json({ error: 'Channel not found' });
+
+    const channel = chData.items[0];
+    const stats = channel.statistics;
+
+    // Fetch top videos (by viewCount)
+    const searchUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=' + encodeURIComponent(channelId) + '&maxResults=10&order=viewCount&type=video&key=' + YT_API_KEY;
+    const searchResp = await fetch(searchUrl);
+    const searchData = await searchResp.json();
+
+    let videos = [];
+    if (searchData.items && searchData.items.length > 0) {
+      const videoIds = searchData.items.map(v => v.id.videoId).join(',');
+      const vidUrl = 'https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=' + videoIds + '&key=' + YT_API_KEY;
+      const vidResp = await fetch(vidUrl);
+      const vidData = await vidResp.json();
+      videos = (vidData.items || []).map(v => ({
+        id: v.id,
+        title: v.snippet.title,
+        thumbnail: v.snippet.thumbnails?.medium?.url || v.snippet.thumbnails?.default?.url,
+        publishedAt: v.snippet.publishedAt,
+        views: parseInt(v.statistics.viewCount || '0'),
+        likes: parseInt(v.statistics.likeCount || '0'),
+        comments: parseInt(v.statistics.commentCount || '0'),
+        duration: v.contentDetails?.duration
+      }));
+    }
+
+    // Fetch recent videos for growth trend
+    const recentUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=' + encodeURIComponent(channelId) + '&maxResults=20&order=date&type=video&key=' + YT_API_KEY;
+    const recentResp = await fetch(recentUrl);
+    const recentData = await recentResp.json();
+
+    let recentVideos = [];
+    if (recentData.items && recentData.items.length > 0) {
+      const recentIds = recentData.items.map(v => v.id.videoId).join(',');
+      const rvUrl = 'https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=' + recentIds + '&key=' + YT_API_KEY;
+      const rvResp = await fetch(rvUrl);
+      const rvData = await rvResp.json();
+      recentVideos = (rvData.items || []).map(v => ({
+        title: v.snippet.title,
+        publishedAt: v.snippet.publishedAt,
+        views: parseInt(v.statistics.viewCount || '0'),
+        likes: parseInt(v.statistics.likeCount || '0'),
+        comments: parseInt(v.statistics.commentCount || '0')
+      })).reverse();
+    }
+
+    const totalViews = parseInt(stats.viewCount || '0');
+    const totalSubs = parseInt(stats.subscriberCount || '0');
+    const totalVideos = parseInt(stats.videoCount || '0');
+    const totalLikes = videos.reduce((s, v) => s + v.likes, 0);
+    const totalVidViews = videos.reduce((s, v) => s + v.views, 0);
+    const engagementRate = totalVidViews > 0 ? ((totalLikes / totalVidViews) * 100).toFixed(2) : 0;
+
+    res.json({
+      channel: {
+        id: channelId,
+        title: channel.snippet.title,
+        description: channel.snippet.description,
+        thumbnail: channel.snippet.thumbnails?.medium?.url,
+        customUrl: channel.snippet.customUrl,
+        subscriberCount: totalSubs,
+        viewCount: totalViews,
+        videoCount: totalVideos,
+        hiddenSubscriberCount: stats.hiddenSubscriberCount,
+      },
+      topVideos: videos.slice(0, 5),
+      recentVideos,
+      engagementRate,
+      estimatedRevenue: {
+        low: (totalViews / 1000 * 1).toFixed(0),
+        high: (totalViews / 1000 * 5).toFixed(0),
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Pipeline Page (Kanban Board) ────────────────────────────────────────────
+app.get('/pipeline', (req, res) => {
+  res.send(`<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pipeline — Mission Control</title>
+    ${NAV_STYLE}
+    <style>
+      .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
+      .page-header h1 { font-size: 2.2rem; font-weight: 800; background: linear-gradient(135deg, #00d4ff 0%, #7b2ff7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+      .page-header p { color: #5a6a8a; margin-top: 0.3rem; }
+      .header-actions { display: flex; gap: 0.75rem; align-items: center; }
+      .btn { padding: 0.65rem 1.4rem; border: none; border-radius: 10px; font-weight: 600; font-size: 0.85rem; cursor: pointer; font-family: inherit; transition: all 0.3s; }
+      .btn-primary { background: linear-gradient(135deg, #00d4ff 0%, #7b2ff7 100%); color: white; }
+      .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3); }
+      .search-box { padding: 0.6rem 1rem; background: rgba(15, 18, 35, 0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; color: #e0e0e0; font-size: 0.85rem; font-family: inherit; outline: none; width: 200px; transition: border-color 0.3s; }
+      .search-box:focus { border-color: rgba(0, 212, 255, 0.5); }
+      .search-box::placeholder { color: #3a4a6a; }
+
+      /* Kanban Board */
+      .kanban { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; align-items: flex-start; }
+      @media (max-width: 1100px) { .kanban { grid-template-columns: repeat(2, 1fr); } }
+      @media (max-width: 600px) { .kanban { grid-template-columns: 1fr; } }
+      .kanban-col {
+        background: rgba(12, 15, 30, 0.5); backdrop-filter: blur(20px);
+        border: 1px solid rgba(255,255,255,0.06); border-radius: 16px;
+        min-height: 400px; display: flex; flex-direction: column;
+        transition: all 0.3s;
+      }
+      .kanban-col.drag-over { border-color: rgba(0, 212, 255, 0.4); background: rgba(0, 212, 255, 0.03); box-shadow: 0 0 30px rgba(0, 212, 255, 0.08); }
+      .col-header {
+        padding: 1.25rem 1.25rem 0.75rem; display: flex; align-items: center; gap: 0.75rem;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+      }
+      .col-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+      .col-name { font-weight: 700; font-size: 0.9rem; color: #c0d0e8; }
+      .col-count { font-size: 0.72rem; color: #5a6a8a; background: rgba(255,255,255,0.04); padding: 0.15rem 0.5rem; border-radius: 50px; margin-left: auto; }
+      .col-add { background: none; border: none; color: #3a4a6a; font-size: 1.1rem; cursor: pointer; padding: 0; line-height: 1; transition: color 0.3s; }
+      .col-add:hover { color: #00d4ff; }
+      .col-tasks { padding: 0.75rem; flex: 1; display: flex; flex-direction: column; gap: 0.6rem; min-height: 60px; }
+
+      /* Task Cards */
+      .task-card {
+        background: rgba(20, 25, 50, 0.7); border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 12px; padding: 1rem; cursor: grab;
+        transition: all 0.3s ease; position: relative; animation: cardIn 0.3s ease-out;
+      }
+      .task-card:hover { border-color: rgba(255,255,255,0.12); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+      .task-card.dragging { opacity: 0.4; transform: rotate(2deg) scale(0.95); }
+      .task-card .priority-bar { position: absolute; top: 0; left: 12px; right: 12px; height: 2px; border-radius: 0 0 2px 2px; }
+      .task-card .task-title { font-weight: 600; font-size: 0.88rem; color: #d0dae8; margin-bottom: 0.4rem; padding-top: 0.3rem; }
+      .task-card .task-desc { font-size: 0.78rem; color: #5a6a8a; line-height: 1.5; margin-bottom: 0.6rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+      .task-meta { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+      .priority-tag { font-size: 0.65rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 50px; text-transform: uppercase; letter-spacing: 0.5px; }
+      .priority-urgent { background: rgba(255, 71, 87, 0.15); color: #ff4757; border: 1px solid rgba(255, 71, 87, 0.3); }
+      .priority-high { background: rgba(255, 165, 2, 0.15); color: #ffa502; border: 1px solid rgba(255, 165, 2, 0.3); }
+      .priority-medium { background: rgba(255, 211, 42, 0.15); color: #ffd32a; border: 1px solid rgba(255, 211, 42, 0.3); }
+      .priority-low { background: rgba(46, 213, 115, 0.15); color: #2ed573; border: 1px solid rgba(46, 213, 115, 0.3); }
+      .assignee-tag { font-size: 0.68rem; color: #7b8da8; background: rgba(255,255,255,0.05); padding: 0.15rem 0.5rem; border-radius: 50px; display: flex; align-items: center; gap: 0.3rem; }
+      .due-tag { font-size: 0.65rem; color: #5a6a8a; margin-left: auto; }
+      .task-actions { position: absolute; top: 0.6rem; right: 0.6rem; display: flex; gap: 0.25rem; opacity: 0; transition: opacity 0.2s; }
+      .task-card:hover .task-actions { opacity: 1; }
+      .task-action-btn { background: rgba(255,255,255,0.06); border: none; color: #5a6a8a; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; font-size: 0.7rem; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+      .task-action-btn:hover { background: rgba(255,255,255,0.12); color: #c0d0e8; }
+      .task-action-btn.delete:hover { background: rgba(255, 71, 87, 0.2); color: #ff4757; }
+      @keyframes cardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+      /* Modal */
+      .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); z-index: 1000; display: none; align-items: center; justify-content: center; animation: fadeIn 0.2s; }
+      .modal-overlay.active { display: flex; }
+      .modal { background: rgba(15, 18, 38, 0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 2rem; width: 90%; max-width: 480px; animation: slideUp 0.3s ease-out; }
+      .modal h2 { font-size: 1.3rem; font-weight: 700; color: #c0d0e8; margin-bottom: 1.5rem; }
+      .form-group { margin-bottom: 1rem; }
+      .form-group label { display: block; font-size: 0.78rem; font-weight: 600; color: #5a6a8a; margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.5px; }
+      .form-group input, .form-group textarea, .form-group select {
+        width: 100%; padding: 0.7rem 1rem; background: rgba(10, 12, 25, 0.8);
+        border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+        color: #e0e0e0; font-size: 0.9rem; font-family: inherit; outline: none;
+        transition: border-color 0.3s;
+      }
+      .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: rgba(0, 212, 255, 0.5); }
+      .form-group textarea { resize: vertical; min-height: 80px; }
+      .form-group select option { background: #0a0e27; }
+      .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+      .modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; }
+      .btn-ghost { background: rgba(255,255,255,0.05); color: #5a6a8a; border: 1px solid rgba(255,255,255,0.08); }
+      .btn-ghost:hover { background: rgba(255,255,255,0.08); color: #c0d0e8; }
+      .btn-danger { background: rgba(255, 71, 87, 0.15); color: #ff4757; border: 1px solid rgba(255, 71, 87, 0.3); }
+      .btn-danger:hover { background: rgba(255, 71, 87, 0.25); }
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+  </head><body>
+    ${NAV_HTML}
+    <div class="container">
+      <div class="page-header">
+        <div>
+          <h1>🔄 Pipeline</h1>
+          <p>Drag & drop tasks across stages — from idea to delivery</p>
+        </div>
+        <div class="header-actions">
+          <input type="text" class="search-box" id="searchInput" placeholder="Search tasks..." oninput="filterTasks()" />
+          <button class="btn btn-primary" onclick="openModal()">+ New Task</button>
+        </div>
+      </div>
+      <div class="kanban" id="kanban">
+        <div class="kanban-col" data-col="ideas" ondragover="handleDragOver(event)" ondrop="handleDrop(event, 'ideas')" ondragleave="handleDragLeave(event)">
+          <div class="col-header"><div class="col-dot" style="background:#a29bfe"></div><span class="col-name">💡 Ideas</span><span class="col-count" id="count-ideas">0</span><button class="col-add" onclick="openModal('ideas')">+</button></div>
+          <div class="col-tasks" id="tasks-ideas"></div>
+        </div>
+        <div class="kanban-col" data-col="in-progress" ondragover="handleDragOver(event)" ondrop="handleDrop(event, 'in-progress')" ondragleave="handleDragLeave(event)">
+          <div class="col-header"><div class="col-dot" style="background:#3742fa"></div><span class="col-name">🚀 In Progress</span><span class="col-count" id="count-in-progress">0</span><button class="col-add" onclick="openModal('in-progress')">+</button></div>
+          <div class="col-tasks" id="tasks-in-progress"></div>
+        </div>
+        <div class="kanban-col" data-col="review" ondragover="handleDragOver(event)" ondrop="handleDrop(event, 'review')" ondragleave="handleDragLeave(event)">
+          <div class="col-header"><div class="col-dot" style="background:#ffa502"></div><span class="col-name">👀 Review</span><span class="col-count" id="count-review">0</span><button class="col-add" onclick="openModal('review')">+</button></div>
+          <div class="col-tasks" id="tasks-review"></div>
+        </div>
+        <div class="kanban-col" data-col="done" ondragover="handleDragOver(event)" ondrop="handleDrop(event, 'done')" ondragleave="handleDragLeave(event)">
+          <div class="col-header"><div class="col-dot" style="background:#2ed573"></div><span class="col-name">✅ Done</span><span class="col-count" id="count-done">0</span><button class="col-add" onclick="openModal('done')">+</button></div>
+          <div class="col-tasks" id="tasks-done"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Task Modal -->
+    <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <h2 id="modalTitle">New Task</h2>
+        <input type="hidden" id="taskId" />
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="taskTitleInput" placeholder="Task title..." />
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="taskDesc" placeholder="Describe the task..."></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Priority</label>
+            <select id="taskPriority"><option value="low">🟢 Low</option><option value="medium" selected>🟡 Medium</option><option value="high">🟠 High</option><option value="urgent">🔴 Urgent</option></select>
+          </div>
+          <div class="form-group">
+            <label>Assignee</label>
+            <input type="text" id="taskAssignee" placeholder="Name..." />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Due Date</label>
+            <input type="date" id="taskDue" />
+          </div>
+          <div class="form-group">
+            <label>Column</label>
+            <select id="taskColumn"><option value="ideas">Ideas</option><option value="in-progress">In Progress</option><option value="review">Review</option><option value="done">Done</option></select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-danger" id="deleteBtn" style="display:none;margin-right:auto" onclick="deleteTask()">Delete</button>
+          <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveTask()">Save Task</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      var tasks = JSON.parse(localStorage.getItem('mc_pipeline_tasks') || '[]');
+      var draggedId = null;
+      var searchTerm = '';
+
+      // Seed demo tasks if empty
+      if (tasks.length === 0) {
+        tasks = [
+          { id: 't1', title: 'Channel rebrand concept', desc: 'Explore new visual identity, thumbnails, and banner designs', priority: 'high', assignee: 'Luke', column: 'ideas', due: '', created: Date.now() },
+          { id: 't2', title: 'Collaboration outreach list', desc: 'Research and compile list of 20 creators for potential collabs', priority: 'medium', assignee: '', column: 'ideas', due: '', created: Date.now() },
+          { id: 't3', title: 'SEO keyword research', desc: 'Analyze top-performing keywords in the niche using TubeBuddy', priority: 'medium', assignee: 'AI', column: 'in-progress', due: '', created: Date.now() },
+          { id: 't4', title: 'Film tutorial episode 12', desc: 'Script, film, and rough cut for the next tutorial installment', priority: 'urgent', assignee: 'Luke', column: 'in-progress', due: '2026-02-15', created: Date.now() },
+          { id: 't5', title: 'Thumbnail A/B test results', desc: 'Review click-through rate data from last 5 thumbnail tests', priority: 'low', assignee: '', column: 'review', due: '', created: Date.now() },
+          { id: 't6', title: 'Setup Shorts workflow', desc: 'Established repurposing pipeline from long-form to Shorts', priority: 'medium', assignee: 'Luke', column: 'done', due: '', created: Date.now() },
+        ];
+        saveTasks();
+      }
+
+      function saveTasks() { localStorage.setItem('mc_pipeline_tasks', JSON.stringify(tasks)); }
+      function genId() { return 't' + Date.now() + Math.random().toString(36).substr(2, 5); }
+
+      function renderBoard() {
+        var cols = ['ideas', 'in-progress', 'review', 'done'];
+        cols.forEach(function(col) {
+          var container = document.getElementById('tasks-' + col);
+          container.innerHTML = '';
+          var colTasks = tasks.filter(function(t) {
+            if (t.column !== col) return false;
+            if (searchTerm && t.title.toLowerCase().indexOf(searchTerm) === -1 && (t.desc || '').toLowerCase().indexOf(searchTerm) === -1) return false;
+            return true;
+          });
+          document.getElementById('count-' + col).textContent = colTasks.length;
+          colTasks.forEach(function(task) {
+            var card = document.createElement('div');
+            card.className = 'task-card';
+            card.draggable = true;
+            card.dataset.id = task.id;
+            card.ondragstart = function(e) { draggedId = task.id; card.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; };
+            card.ondragend = function() { card.classList.remove('dragging'); draggedId = null; };
+            card.ondblclick = function() { openModal(null, task.id); };
+
+            var priorityColors = { urgent: '#ff4757', high: '#ffa502', medium: '#ffd32a', low: '#2ed573' };
+            var pColor = priorityColors[task.priority] || '#5a6a8a';
+
+            var dueStr = '';
+            if (task.due) {
+              var d = new Date(task.due + 'T00:00:00');
+              dueStr = '<span class="due-tag">📅 ' + d.toLocaleDateString('en-AU', { month: 'short', day: 'numeric' }) + '</span>';
+            }
+
+            var assigneeStr = '';
+            if (task.assignee) {
+              assigneeStr = '<span class="assignee-tag">👤 ' + task.assignee + '</span>';
+            }
+
+            card.innerHTML = '<div class="priority-bar" style="background:' + pColor + '"></div>' +
+              '<div class="task-actions">' +
+                '<button class="task-action-btn" onclick="event.stopPropagation();openModal(null,\\'' + task.id + '\\')">✏️</button>' +
+                '<button class="task-action-btn delete" onclick="event.stopPropagation();deleteTaskById(\\'' + task.id + '\\')">🗑</button>' +
+              '</div>' +
+              '<div class="task-title">' + escHtml(task.title) + '</div>' +
+              (task.desc ? '<div class="task-desc">' + escHtml(task.desc) + '</div>' : '') +
+              '<div class="task-meta">' +
+                '<span class="priority-tag priority-' + task.priority + '">' + task.priority + '</span>' +
+                assigneeStr + dueStr +
+              '</div>';
+            container.appendChild(card);
+          });
+        });
+      }
+
+      function escHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+      function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; var col = e.currentTarget; col.classList.add('drag-over'); }
+      function handleDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+      function handleDrop(e, colName) {
+        e.preventDefault();
+        e.currentTarget.classList.remove('drag-over');
+        if (!draggedId) return;
+        var task = tasks.find(function(t) { return t.id === draggedId; });
+        if (task) { task.column = colName; saveTasks(); renderBoard(); }
+      }
+
+      function filterTasks() {
+        searchTerm = document.getElementById('searchInput').value.toLowerCase();
+        renderBoard();
+      }
+
+      function openModal(col, editId) {
+        document.getElementById('modalOverlay').classList.add('active');
+        if (editId) {
+          var task = tasks.find(function(t) { return t.id === editId; });
+          if (!task) return;
+          document.getElementById('modalTitle').textContent = 'Edit Task';
+          document.getElementById('taskId').value = task.id;
+          document.getElementById('taskTitleInput').value = task.title;
+          document.getElementById('taskDesc').value = task.desc || '';
+          document.getElementById('taskPriority').value = task.priority;
+          document.getElementById('taskAssignee').value = task.assignee || '';
+          document.getElementById('taskDue').value = task.due || '';
+          document.getElementById('taskColumn').value = task.column;
+          document.getElementById('deleteBtn').style.display = 'block';
+        } else {
+          document.getElementById('modalTitle').textContent = 'New Task';
+          document.getElementById('taskId').value = '';
+          document.getElementById('taskTitleInput').value = '';
+          document.getElementById('taskDesc').value = '';
+          document.getElementById('taskPriority').value = 'medium';
+          document.getElementById('taskAssignee').value = '';
+          document.getElementById('taskDue').value = '';
+          document.getElementById('taskColumn').value = col || 'ideas';
+          document.getElementById('deleteBtn').style.display = 'none';
+        }
+        setTimeout(function() { document.getElementById('taskTitleInput').focus(); }, 100);
+      }
+
+      function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
+
+      function saveTask() {
+        var title = document.getElementById('taskTitleInput').value.trim();
+        if (!title) return;
+        var id = document.getElementById('taskId').value;
+        var data = {
+          title: title,
+          desc: document.getElementById('taskDesc').value.trim(),
+          priority: document.getElementById('taskPriority').value,
+          assignee: document.getElementById('taskAssignee').value.trim(),
+          due: document.getElementById('taskDue').value,
+          column: document.getElementById('taskColumn').value,
+        };
+        if (id) {
+          var task = tasks.find(function(t) { return t.id === id; });
+          if (task) Object.assign(task, data);
+        } else {
+          data.id = genId();
+          data.created = Date.now();
+          tasks.push(data);
+        }
+        saveTasks();
+        renderBoard();
+        closeModal();
+      }
+
+      function deleteTask() {
+        var id = document.getElementById('taskId').value;
+        if (id) { deleteTaskById(id); closeModal(); }
+      }
+
+      function deleteTaskById(id) {
+        tasks = tasks.filter(function(t) { return t.id !== id; });
+        saveTasks();
+        renderBoard();
+      }
+
+      renderBoard();
+    </script>
+    <script>document.getElementById('nav-pipeline').classList.add('active');</script>
+  </body></html>`);
+});
+
+// ─── Growth Page (YouTube Analytics Dashboard) ──────────────────────────────
+app.get('/growth', (req, res) => {
+  res.send(`<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Growth — Mission Control</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>
+    ${NAV_STYLE}
+    <style>
+      .page-header h1 { font-size: 2.2rem; font-weight: 800; background: linear-gradient(135deg, #00d4ff 0%, #7b2ff7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+      .page-header p { color: #5a6a8a; margin-top: 0.3rem; }
+
+      /* Setup Card */
+      .setup-card {
+        background: rgba(12, 15, 30, 0.7); backdrop-filter: blur(20px);
+        border: 1px solid rgba(255,255,255,0.08); border-radius: 20px;
+        padding: 3rem; text-align: center; max-width: 600px; margin: 3rem auto;
+        animation: slideUp 0.4s ease-out;
+      }
+      .setup-card .icon { font-size: 3.5rem; margin-bottom: 1rem; }
+      .setup-card h2 { color: #c0d0e8; font-size: 1.4rem; margin-bottom: 0.5rem; }
+      .setup-card p { color: #5a6a8a; margin-bottom: 1.5rem; font-size: 0.9rem; }
+      .setup-row { display: flex; gap: 0.75rem; max-width: 400px; margin: 0 auto; }
+      .setup-row input { flex: 1; padding: 0.75rem 1rem; background: rgba(10, 12, 25, 0.8); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; color: #e0e0e0; font-size: 0.9rem; font-family: inherit; outline: none; }
+      .setup-row input:focus { border-color: rgba(0, 212, 255, 0.5); }
+      .setup-row input::placeholder { color: #3a4a6a; }
+      .btn { padding: 0.7rem 1.5rem; border: none; border-radius: 10px; font-weight: 600; font-size: 0.85rem; cursor: pointer; font-family: inherit; transition: all 0.3s; }
+      .btn-primary { background: linear-gradient(135deg, #00d4ff 0%, #7b2ff7 100%); color: white; }
+      .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3); }
+      .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+      .btn-ghost { background: rgba(255,255,255,0.05); color: #5a6a8a; border: 1px solid rgba(255,255,255,0.08); }
+      .btn-ghost:hover { color: #c0d0e8; }
+      .search-results { margin-top: 1rem; text-align: left; }
+      .ch-result {
+        display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem;
+        background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 12px; margin-bottom: 0.5rem; cursor: pointer; transition: all 0.3s;
+      }
+      .ch-result:hover { border-color: rgba(0, 212, 255, 0.3); background: rgba(0, 212, 255, 0.04); }
+      .ch-result img { width: 40px; height: 40px; border-radius: 50%; }
+      .ch-result .ch-name { font-weight: 600; color: #c0d0e8; font-size: 0.9rem; }
+      .ch-result .ch-desc { font-size: 0.75rem; color: #5a6a8a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 350px; }
+
+      /* Dashboard */
+      .dashboard { display: none; animation: fadeIn 0.5s ease-out; }
+      .dashboard.active { display: block; }
+      .channel-bar {
+        display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; padding: 1rem 1.5rem;
+        background: rgba(12, 15, 30, 0.5); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px;
+      }
+      .channel-bar img { width: 48px; height: 48px; border-radius: 50%; border: 2px solid rgba(0, 212, 255, 0.3); }
+      .channel-bar .ch-title { font-weight: 700; font-size: 1.1rem; color: #c0d0e8; }
+      .channel-bar .ch-url { font-size: 0.78rem; color: #5a6a8a; }
+      .channel-bar .ch-change { margin-left: auto; }
+
+      /* Stat Cards */
+      .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; margin-bottom: 2rem; }
+      @media (max-width: 900px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+      .stat-card {
+        background: rgba(12, 15, 30, 0.7); backdrop-filter: blur(20px);
+        border: 1px solid rgba(255,255,255,0.06); border-radius: 16px;
+        padding: 1.5rem; position: relative; overflow: hidden;
+        transition: all 0.3s;
+      }
+      .stat-card:hover { border-color: rgba(255,255,255,0.12); transform: translateY(-3px); box-shadow: 0 12px 30px rgba(0,0,0,0.3); }
+      .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--accent); }
+      .stat-card .stat-icon { font-size: 1.5rem; margin-bottom: 0.75rem; }
+      .stat-card .stat-value { font-size: 1.8rem; font-weight: 800; color: #e0e8f0; margin-bottom: 0.25rem; }
+      .stat-card .stat-label { font-size: 0.78rem; color: #5a6a8a; text-transform: uppercase; letter-spacing: 0.5px; }
+
+      /* Charts */
+      .chart-row { display: grid; grid-template-columns: 2fr 1fr; gap: 1.25rem; margin-bottom: 2rem; }
+      @media (max-width: 900px) { .chart-row { grid-template-columns: 1fr; } }
+      .chart-card {
+        background: rgba(12, 15, 30, 0.7); backdrop-filter: blur(20px);
+        border: 1px solid rgba(255,255,255,0.06); border-radius: 16px;
+        padding: 1.5rem;
+      }
+      .chart-card h3 { font-size: 1rem; font-weight: 700; color: #c0d0e8; margin-bottom: 1rem; }
+      .chart-wrap { position: relative; height: 280px; }
+      .revenue-card { display: flex; flex-direction: column; justify-content: center; }
+      .revenue-range { text-align: center; }
+      .revenue-range .rev-label { font-size: 0.8rem; color: #5a6a8a; margin-bottom: 0.5rem; }
+      .revenue-range .rev-value { font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #2ed573, #00d4ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+      .revenue-range .rev-sub { font-size: 0.75rem; color: #3a4a6a; margin-top: 0.3rem; }
+      .revenue-divider { width: 60px; height: 1px; background: rgba(255,255,255,0.08); margin: 1.5rem auto; }
+
+      /* Videos */
+      .videos-section { margin-bottom: 2rem; }
+      .videos-section h3 { font-size: 1.1rem; font-weight: 700; color: #c0d0e8; margin-bottom: 1rem; }
+      .video-list { display: flex; flex-direction: column; gap: 0.75rem; }
+      .video-row {
+        display: flex; align-items: center; gap: 1rem; padding: 1rem;
+        background: rgba(12, 15, 30, 0.5); border: 1px solid rgba(255,255,255,0.05);
+        border-radius: 14px; transition: all 0.3s; cursor: pointer;
+      }
+      .video-row:hover { border-color: rgba(0, 212, 255, 0.2); transform: translateX(4px); }
+      .video-row .rank { font-size: 1.2rem; font-weight: 800; color: #3a4a6a; width: 30px; text-align: center; flex-shrink: 0; }
+      .video-row .thumb { width: 120px; height: 68px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+      .video-row .vid-info { flex: 1; min-width: 0; }
+      .video-row .vid-title { font-weight: 600; font-size: 0.88rem; color: #c0d0e8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 0.3rem; }
+      .video-row .vid-date { font-size: 0.72rem; color: #4a5a6a; }
+      .video-row .vid-stats { display: flex; gap: 1rem; flex-shrink: 0; }
+      .video-row .vid-stat { text-align: right; }
+      .video-row .vid-stat .val { font-weight: 700; font-size: 0.88rem; color: #c0d0e8; }
+      .video-row .vid-stat .lbl { font-size: 0.65rem; color: #4a5a6a; text-transform: uppercase; }
+      @media (max-width: 700px) { .video-row .thumb { display: none; } .video-row .vid-stats { flex-direction: column; gap: 0.3rem; } }
+
+      /* Loading */
+      .loading { text-align: center; padding: 4rem 2rem; }
+      .spinner { width: 40px; height: 40px; border: 3px solid rgba(0, 212, 255, 0.2); border-top-color: #00d4ff; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 1rem; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .loading p { color: #5a6a8a; }
+      .error-msg { background: rgba(255, 71, 87, 0.1); border: 1px solid rgba(255, 71, 87, 0.3); border-radius: 12px; padding: 1rem 1.5rem; color: #ff6b7a; font-size: 0.9rem; margin: 1rem 0; }
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+  </head><body>
+    ${NAV_HTML}
+    <div class="container">
+      <div class="page-header" style="margin-bottom:1.5rem">
+        <h1>📈 Growth Dashboard</h1>
+        <p>YouTube analytics — track subscribers, views, engagement & revenue</p>
+      </div>
+
+      <div id="setupView">
+        <div class="setup-card">
+          <div class="icon">📺</div>
+          <h2>Connect Your YouTube Channel</h2>
+          <p>Search for your channel to load analytics</p>
+          <div class="setup-row">
+            <input type="text" id="channelSearch" placeholder="Search channel name or paste ID..." onkeydown="if(event.key==='Enter')searchChannel()" />
+            <button class="btn btn-primary" id="searchBtn" onclick="searchChannel()">Search</button>
+          </div>
+          <div id="searchResults" class="search-results"></div>
+        </div>
+      </div>
+
+      <div id="loadingView" style="display:none">
+        <div class="loading"><div class="spinner"></div><p>Loading analytics...</p></div>
+      </div>
+
+      <div class="dashboard" id="dashboardView">
+        <div class="channel-bar" id="channelBar"></div>
+        <div class="stats-grid" id="statsGrid"></div>
+        <div class="chart-row">
+          <div class="chart-card">
+            <h3>📊 Views Per Video (Recent)</h3>
+            <div class="chart-wrap"><canvas id="viewsChart"></canvas></div>
+          </div>
+          <div class="chart-card revenue-card">
+            <h3>💰 Estimated Revenue</h3>
+            <div id="revenueDisplay"></div>
+          </div>
+        </div>
+        <div class="chart-row" style="grid-template-columns: 1fr 1fr">
+          <div class="chart-card">
+            <h3>💬 Engagement Per Video</h3>
+            <div class="chart-wrap"><canvas id="engagementChart"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h3>👍 Likes Per Video</h3>
+            <div class="chart-wrap"><canvas id="likesChart"></canvas></div>
+          </div>
+        </div>
+        <div class="videos-section">
+          <h3>🏆 Top 5 Videos</h3>
+          <div class="video-list" id="videoList"></div>
+        </div>
+      </div>
+      <div id="errorArea"></div>
+    </div>
+
+    <script>
+      var channelId = localStorage.getItem('mc_yt_channel_id') || '';
+      var channelName = localStorage.getItem('mc_yt_channel_name') || '';
+      var viewsChartInstance = null;
+      var engagementChartInstance = null;
+      var likesChartInstance = null;
+
+      if (channelId) { loadDashboard(channelId); }
+
+      function searchChannel() {
+        var q = document.getElementById('channelSearch').value.trim();
+        if (!q) return;
+        // If it looks like a channel ID, load directly
+        if (q.startsWith('UC') && q.length > 20) {
+          selectChannel(q, q);
+          return;
+        }
+        document.getElementById('searchBtn').disabled = true;
+        document.getElementById('searchBtn').textContent = 'Searching...';
+        fetch('/api/youtube/search?q=' + encodeURIComponent(q))
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            document.getElementById('searchBtn').disabled = false;
+            document.getElementById('searchBtn').textContent = 'Search';
+            if (data.error) { showError(data.error); return; }
+            var html = '';
+            (data.channels || []).forEach(function(ch) {
+              html += '<div class="ch-result" onclick="selectChannel(\\'' + ch.id + '\\', \\'' + escAttr(ch.title) + '\\')">' +
+                (ch.thumbnail ? '<img src="' + ch.thumbnail + '" alt="" />' : '') +
+                '<div><div class="ch-name">' + escH(ch.title) + '</div><div class="ch-desc">' + escH(ch.description || '') + '</div></div></div>';
+            });
+            if (!html) html = '<p style="color:#5a6a8a;text-align:center;padding:1rem">No channels found</p>';
+            document.getElementById('searchResults').innerHTML = html;
+          })
+          .catch(function(err) {
+            document.getElementById('searchBtn').disabled = false;
+            document.getElementById('searchBtn').textContent = 'Search';
+            showError(err.message);
+          });
+      }
+
+      function selectChannel(id, name) {
+        channelId = id;
+        channelName = name || id;
+        localStorage.setItem('mc_yt_channel_id', id);
+        localStorage.setItem('mc_yt_channel_name', name || id);
+        loadDashboard(id);
+      }
+
+      function loadDashboard(id) {
+        document.getElementById('setupView').style.display = 'none';
+        document.getElementById('loadingView').style.display = 'block';
+        document.getElementById('dashboardView').classList.remove('active');
+        document.getElementById('errorArea').innerHTML = '';
+
+        fetch('/api/youtube/dashboard?channelId=' + encodeURIComponent(id))
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            document.getElementById('loadingView').style.display = 'none';
+            if (data.error) {
+              showError(data.error);
+              document.getElementById('setupView').style.display = 'block';
+              return;
+            }
+            renderDashboard(data);
+          })
+          .catch(function(err) {
+            document.getElementById('loadingView').style.display = 'none';
+            document.getElementById('setupView').style.display = 'block';
+            showError(err.message);
+          });
+      }
+
+      function renderDashboard(data) {
+        var ch = data.channel;
+        localStorage.setItem('mc_yt_channel_name', ch.title);
+
+        // Channel bar
+        document.getElementById('channelBar').innerHTML =
+          (ch.thumbnail ? '<img src="' + ch.thumbnail + '" alt="" />' : '') +
+          '<div><div class="ch-title">' + escH(ch.title) + '</div>' +
+          '<div class="ch-url">' + escH(ch.customUrl || ch.id) + '</div></div>' +
+          '<button class="btn btn-ghost ch-change" onclick="changeChannel()">Change Channel</button>';
+
+        // Stats
+        document.getElementById('statsGrid').innerHTML =
+          statCard('👥', formatNum(ch.subscriberCount), 'Subscribers', '#00d4ff') +
+          statCard('👁️', formatNum(ch.viewCount), 'Total Views', '#7b2ff7') +
+          statCard('🎬', formatNum(ch.videoCount), 'Videos', '#2ed573') +
+          statCard('💬', data.engagementRate + '%', 'Engagement Rate', '#ffa502');
+
+        // Revenue
+        document.getElementById('revenueDisplay').innerHTML =
+          '<div class="revenue-range">' +
+            '<div class="rev-label">Estimated Lifetime</div>' +
+            '<div class="rev-value">$' + formatNum(parseInt(data.estimatedRevenue.low)) + ' — $' + formatNum(parseInt(data.estimatedRevenue.high)) + '</div>' +
+            '<div class="rev-sub">Based on $1–$5 CPM</div>' +
+          '</div>' +
+          '<div class="revenue-divider"></div>' +
+          '<div class="revenue-range">' +
+            '<div class="rev-label">Per 1K Views</div>' +
+            '<div class="rev-value">$1 — $5</div>' +
+            '<div class="rev-sub">Industry average CPM</div>' +
+          '</div>';
+
+        // Top videos
+        var vhtml = '';
+        data.topVideos.forEach(function(v, i) {
+          vhtml += '<div class="video-row" onclick="window.open(\\'https://youtube.com/watch?v=' + v.id + '\\',\\'_blank\\')">' +
+            '<span class="rank">#' + (i + 1) + '</span>' +
+            (v.thumbnail ? '<img class="thumb" src="' + v.thumbnail + '" alt="" />' : '') +
+            '<div class="vid-info"><div class="vid-title">' + escH(v.title) + '</div>' +
+            '<div class="vid-date">' + new Date(v.publishedAt).toLocaleDateString('en-AU', { year: 'numeric', month: 'short', day: 'numeric' }) + '</div></div>' +
+            '<div class="vid-stats">' +
+              '<div class="vid-stat"><div class="val">' + formatNum(v.views) + '</div><div class="lbl">Views</div></div>' +
+              '<div class="vid-stat"><div class="val">' + formatNum(v.likes) + '</div><div class="lbl">Likes</div></div>' +
+              '<div class="vid-stat"><div class="val">' + formatNum(v.comments) + '</div><div class="lbl">Comments</div></div>' +
+            '</div></div>';
+        });
+        document.getElementById('videoList').innerHTML = vhtml || '<p style="color:#5a6a8a">No videos found</p>';
+
+        // Charts
+        renderCharts(data.recentVideos || []);
+        document.getElementById('dashboardView').classList.add('active');
+      }
+
+      function renderCharts(videos) {
+        var labels = videos.map(function(v) { return v.title.length > 20 ? v.title.substr(0, 20) + '...' : v.title; });
+        var views = videos.map(function(v) { return v.views; });
+        var likes = videos.map(function(v) { return v.likes; });
+        var comments = videos.map(function(v) { return v.comments; });
+        var engagement = videos.map(function(v) { return v.views > 0 ? (((v.likes + v.comments) / v.views) * 100).toFixed(2) : 0; });
+
+        var chartDefaults = {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { color: '#4a5a6a', maxRotation: 45, font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.03)' } },
+            y: { ticks: { color: '#4a5a6a', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+          }
+        };
+
+        if (viewsChartInstance) viewsChartInstance.destroy();
+        viewsChartInstance = new Chart(document.getElementById('viewsChart'), {
+          type: 'bar',
+          data: { labels: labels, datasets: [{ data: views, backgroundColor: 'rgba(0, 212, 255, 0.4)', borderColor: '#00d4ff', borderWidth: 1, borderRadius: 6 }] },
+          options: chartDefaults
+        });
+
+        if (engagementChartInstance) engagementChartInstance.destroy();
+        engagementChartInstance = new Chart(document.getElementById('engagementChart'), {
+          type: 'line',
+          data: { labels: labels, datasets: [{ data: engagement, borderColor: '#ffa502', backgroundColor: 'rgba(255, 165, 2, 0.1)', fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: '#ffa502' }] },
+          options: chartDefaults
+        });
+
+        if (likesChartInstance) likesChartInstance.destroy();
+        likesChartInstance = new Chart(document.getElementById('likesChart'), {
+          type: 'bar',
+          data: { labels: labels, datasets: [{ data: likes, backgroundColor: 'rgba(123, 47, 247, 0.4)', borderColor: '#7b2ff7', borderWidth: 1, borderRadius: 6 }] },
+          options: chartDefaults
+        });
+      }
+
+      function changeChannel() {
+        localStorage.removeItem('mc_yt_channel_id');
+        localStorage.removeItem('mc_yt_channel_name');
+        channelId = '';
+        document.getElementById('dashboardView').classList.remove('active');
+        document.getElementById('setupView').style.display = 'block';
+        document.getElementById('searchResults').innerHTML = '';
+        document.getElementById('channelSearch').value = '';
+      }
+
+      function statCard(icon, value, label, accent) {
+        return '<div class="stat-card" style="--accent:' + accent + '">' +
+          '<div class="stat-icon">' + icon + '</div>' +
+          '<div class="stat-value">' + value + '</div>' +
+          '<div class="stat-label">' + label + '</div></div>';
+      }
+
+      function formatNum(n) {
+        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+        if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+        return String(n);
+      }
+      function escH(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+      function escAttr(s) { return s.replace(/'/g, "\\\\'").replace(/"/g, '&quot;'); }
+      function showError(msg) {
+        document.getElementById('errorArea').innerHTML = '<div class="error-msg">' + escH(msg) + '</div>';
+      }
+    </script>
+    <script>document.getElementById('nav-growth').classList.add('active');</script>
+  </body></html>`);
+});
+
+// ─── Content Page (Content Calendar) ─────────────────────────────────────────
+app.get('/content', (req, res) => {
+  res.send(`<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Content — Mission Control</title>
+    ${NAV_STYLE}
+    <style>
+      .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
+      .page-header h1 { font-size: 2.2rem; font-weight: 800; background: linear-gradient(135deg, #00d4ff 0%, #7b2ff7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+      .page-header p { color: #5a6a8a; margin-top: 0.3rem; }
+      .header-actions { display: flex; gap: 0.75rem; align-items: center; }
+      .btn { padding: 0.65rem 1.4rem; border: none; border-radius: 10px; font-weight: 600; font-size: 0.85rem; cursor: pointer; font-family: inherit; transition: all 0.3s; }
+      .btn-primary { background: linear-gradient(135deg, #00d4ff 0%, #7b2ff7 100%); color: white; }
+      .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3); }
+      .btn-ghost { background: rgba(255,255,255,0.05); color: #5a6a8a; border: 1px solid rgba(255,255,255,0.08); }
+      .btn-ghost:hover { background: rgba(255,255,255,0.08); color: #c0d0e8; }
+      .btn-icon { background: none; border: none; color: #5a6a8a; font-size: 1.2rem; cursor: pointer; padding: 0.3rem; transition: color 0.3s; }
+      .btn-icon:hover { color: #00d4ff; }
+
+      /* Calendar Navigation */
+      .cal-nav { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
+      .cal-nav h2 { font-size: 1.4rem; font-weight: 700; color: #c0d0e8; min-width: 200px; }
+      .view-toggle { display: flex; gap: 0; background: rgba(15, 18, 35, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; overflow: hidden; margin-left: auto; }
+      .view-toggle button { padding: 0.5rem 1rem; background: none; border: none; color: #5a6a8a; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.3s; font-family: inherit; }
+      .view-toggle button.active { background: rgba(0, 212, 255, 0.15); color: #00d4ff; }
+
+      /* Calendar Grid */
+      .cal-grid {
+        display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px;
+        background: rgba(255,255,255,0.03); border-radius: 16px; overflow: hidden;
+        border: 1px solid rgba(255,255,255,0.06);
+      }
+      .cal-day-header {
+        padding: 0.75rem; text-align: center; font-size: 0.75rem; font-weight: 700;
+        color: #5a6a8a; text-transform: uppercase; letter-spacing: 1px;
+        background: rgba(12, 15, 30, 0.8);
+      }
+      .cal-day {
+        min-height: 120px; padding: 0.5rem; background: rgba(12, 15, 30, 0.5);
+        transition: all 0.3s; position: relative; vertical-align: top;
+      }
+      .cal-day:hover { background: rgba(12, 15, 30, 0.8); }
+      .cal-day.other-month { opacity: 0.3; }
+      .cal-day.today { background: rgba(0, 212, 255, 0.04); }
+      .cal-day.today::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, #00d4ff, #7b2ff7); }
+      .cal-day.drag-over { background: rgba(0, 212, 255, 0.08); box-shadow: inset 0 0 20px rgba(0, 212, 255, 0.1); }
+      .day-num { font-size: 0.82rem; font-weight: 600; color: #5a6a8a; margin-bottom: 0.4rem; }
+      .cal-day.today .day-num { color: #00d4ff; }
+      .day-add { position: absolute; top: 0.4rem; right: 0.4rem; background: none; border: none; color: #2a3a5a; font-size: 0.9rem; cursor: pointer; opacity: 0; transition: opacity 0.2s; line-height: 1; }
+      .cal-day:hover .day-add { opacity: 1; }
+      .day-add:hover { color: #00d4ff; }
+
+      /* Content Cards */
+      .content-chip {
+        padding: 0.3rem 0.5rem; margin-bottom: 0.3rem;
+        border-radius: 6px; font-size: 0.7rem; font-weight: 600;
+        cursor: grab; transition: all 0.2s; white-space: nowrap;
+        overflow: hidden; text-overflow: ellipsis; display: block;
+        border-left: 3px solid var(--type-color);
+        background: rgba(255,255,255,0.03);
+        color: #b0c4de;
+      }
+      .content-chip:hover { background: rgba(255,255,255,0.06); transform: translateX(2px); }
+      .content-chip.dragging { opacity: 0.4; }
+
+      /* Type Colors */
+      .type-video { --type-color: #3742fa; }
+      .type-short { --type-color: #a29bfe; }
+      .type-livestream { --type-color: #ff4757; }
+      .type-community { --type-color: #2ed573; }
+
+      /* List View */
+      .list-view { display: none; }
+      .list-view.active { display: block; }
+      .cal-view.active { display: grid; }
+      .cal-view { display: none; }
+      .list-item {
+        display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem;
+        background: rgba(12, 15, 30, 0.5); border: 1px solid rgba(255,255,255,0.05);
+        border-radius: 14px; margin-bottom: 0.6rem; transition: all 0.3s;
+        cursor: pointer; animation: cardIn 0.3s ease-out;
+      }
+      .list-item:hover { border-color: rgba(255,255,255,0.1); transform: translateX(4px); }
+      .list-type { width: 8px; height: 40px; border-radius: 4px; flex-shrink: 0; }
+      .list-info { flex: 1; min-width: 0; }
+      .list-title { font-weight: 600; font-size: 0.9rem; color: #c0d0e8; margin-bottom: 0.2rem; }
+      .list-desc { font-size: 0.78rem; color: #5a6a8a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .list-meta { display: flex; gap: 0.75rem; flex-shrink: 0; align-items: center; }
+      .list-date { font-size: 0.78rem; color: #5a6a8a; white-space: nowrap; }
+      .status-badge { font-size: 0.65rem; font-weight: 600; padding: 0.2rem 0.6rem; border-radius: 50px; text-transform: uppercase; letter-spacing: 0.5px; }
+      .status-idea { background: rgba(162, 155, 254, 0.15); color: #a29bfe; }
+      .status-scripting { background: rgba(0, 212, 255, 0.15); color: #00d4ff; }
+      .status-filming { background: rgba(255, 165, 2, 0.15); color: #ffa502; }
+      .status-editing { background: rgba(253, 121, 168, 0.15); color: #fd79a8; }
+      .status-scheduled { background: rgba(55, 66, 250, 0.15); color: #3742fa; }
+      .status-published { background: rgba(46, 213, 115, 0.15); color: #2ed573; }
+      .type-badge { font-size: 0.65rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 50px; }
+
+      /* Modal */
+      .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); z-index: 1000; display: none; align-items: center; justify-content: center; }
+      .modal-overlay.active { display: flex; }
+      .modal { background: rgba(15, 18, 38, 0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 2rem; width: 90%; max-width: 520px; animation: slideUp 0.3s ease-out; }
+      .modal h2 { font-size: 1.3rem; font-weight: 700; color: #c0d0e8; margin-bottom: 1.5rem; }
+      .form-group { margin-bottom: 1rem; }
+      .form-group label { display: block; font-size: 0.78rem; font-weight: 600; color: #5a6a8a; margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.5px; }
+      .form-group input, .form-group textarea, .form-group select {
+        width: 100%; padding: 0.7rem 1rem; background: rgba(10, 12, 25, 0.8);
+        border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+        color: #e0e0e0; font-size: 0.9rem; font-family: inherit; outline: none;
+        transition: border-color 0.3s;
+      }
+      .form-group input:focus, .form-group textarea:focus, .form-group select:focus { border-color: rgba(0, 212, 255, 0.5); }
+      .form-group textarea { resize: vertical; min-height: 100px; }
+      .form-group select option { background: #0a0e27; }
+      .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+      .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+      .modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; }
+      .btn-danger { background: rgba(255, 71, 87, 0.15); color: #ff4757; border: 1px solid rgba(255, 71, 87, 0.3); }
+      .btn-danger:hover { background: rgba(255, 71, 87, 0.25); }
+      @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes cardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+  </head><body>
+    ${NAV_HTML}
+    <div class="container">
+      <div class="page-header">
+        <div>
+          <h1>✍️ Content Calendar</h1>
+          <p>Plan, schedule, and track your content pipeline</p>
+        </div>
+        <div class="header-actions">
+          <div class="view-toggle">
+            <button id="viewCalBtn" class="active" onclick="setView('calendar')">📅 Calendar</button>
+            <button id="viewListBtn" onclick="setView('list')">📋 List</button>
+          </div>
+          <button class="btn btn-primary" onclick="openContentModal()">+ New Content</button>
+        </div>
+      </div>
+
+      <div class="cal-nav">
+        <button class="btn-icon" onclick="changeMonth(-1)">◀</button>
+        <h2 id="calMonthLabel"></h2>
+        <button class="btn-icon" onclick="changeMonth(1)">▶</button>
+        <button class="btn btn-ghost" onclick="goToday()">Today</button>
+      </div>
+
+      <div class="cal-view active cal-grid" id="calGrid"></div>
+
+      <div class="list-view" id="listView"></div>
+    </div>
+
+    <!-- Content Modal -->
+    <div class="modal-overlay" id="contentModalOverlay" onclick="if(event.target===this)closeContentModal()">
+      <div class="modal">
+        <h2 id="contentModalTitle">New Content</h2>
+        <input type="hidden" id="contentId" />
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="contentTitle" placeholder="Video title or idea..." />
+        </div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label>Type</label>
+            <select id="contentType"><option value="video">🎬 Video</option><option value="short">📱 Short</option><option value="livestream">🔴 Livestream</option><option value="community">💬 Community</option></select>
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select id="contentStatus"><option value="idea">💡 Idea</option><option value="scripting">✍️ Scripting</option><option value="filming">🎥 Filming</option><option value="editing">✂️ Editing</option><option value="scheduled">📅 Scheduled</option><option value="published">✅ Published</option></select>
+          </div>
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="contentDate" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Script / Notes</label>
+          <textarea id="contentNotes" placeholder="Script outline, talking points, notes..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>Tags (comma-separated)</label>
+          <input type="text" id="contentTags" placeholder="tutorial, tech, review..." />
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-danger" id="contentDeleteBtn" style="display:none;margin-right:auto" onclick="deleteContent()">Delete</button>
+          <button class="btn btn-ghost" onclick="closeContentModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveContent()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      var items = JSON.parse(localStorage.getItem('mc_content_items') || '[]');
+      var currentYear, currentMonth;
+      var currentView = 'calendar';
+      var draggedContentId = null;
+
+      // Seed demo data if empty
+      if (items.length === 0) {
+        var today = new Date();
+        var y = today.getFullYear(), m = today.getMonth();
+        items = [
+          { id: 'c1', title: 'Top 10 AI Tools for Creators', type: 'video', status: 'scripting', date: dateStr(y, m, 14), notes: 'Cover ChatGPT, Midjourney, Runway, ElevenLabs, etc.', tags: 'ai,tools,tutorial', created: Date.now() },
+          { id: 'c2', title: 'Quick Tip: Color Grading in 60s', type: 'short', status: 'idea', date: dateStr(y, m, 16), notes: '', tags: 'editing,short', created: Date.now() },
+          { id: 'c3', title: 'Monthly Q&A Livestream', type: 'livestream', status: 'scheduled', date: dateStr(y, m, 20), notes: 'Collect questions from community tab beforehand', tags: 'qa,community', created: Date.now() },
+          { id: 'c4', title: 'Behind the Scenes: Studio Tour', type: 'video', status: 'filming', date: dateStr(y, m, 22), notes: 'Show new setup, lighting, camera gear', tags: 'bts,studio', created: Date.now() },
+          { id: 'c5', title: 'Poll: Next tutorial topic?', type: 'community', status: 'published', date: dateStr(y, m, 10), notes: 'Options: Premiere Pro, DaVinci, CapCut', tags: 'poll', created: Date.now() },
+          { id: 'c6', title: 'YouTube Algorithm Deep Dive', type: 'video', status: 'idea', date: dateStr(y, m, 28), notes: 'Research latest algorithm changes, interview experts if possible', tags: 'youtube,algorithm,growth', created: Date.now() },
+        ];
+        saveItems();
+      }
+
+      function dateStr(y, m, d) { return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0'); }
+      function saveItems() { localStorage.setItem('mc_content_items', JSON.stringify(items)); }
+      function genId() { return 'c' + Date.now() + Math.random().toString(36).substr(2, 5); }
+
+      // Init to current month
+      var now = new Date();
+      currentYear = now.getFullYear();
+      currentMonth = now.getMonth();
+      renderCalendar();
+      renderList();
+
+      function changeMonth(delta) {
+        currentMonth += delta;
+        if (currentMonth > 11) { currentMonth = 0; currentYear++; }
+        if (currentMonth < 0) { currentMonth = 11; currentYear--; }
+        renderCalendar();
+      }
+
+      function goToday() {
+        var n = new Date();
+        currentYear = n.getFullYear();
+        currentMonth = n.getMonth();
+        renderCalendar();
+      }
+
+      function setView(v) {
+        currentView = v;
+        document.getElementById('viewCalBtn').classList.toggle('active', v === 'calendar');
+        document.getElementById('viewListBtn').classList.toggle('active', v === 'list');
+        document.querySelector('.cal-view').classList.toggle('active', v === 'calendar');
+        document.getElementById('listView').classList.toggle('active', v === 'list');
+        if (v === 'list') renderList();
+      }
+
+      function renderCalendar() {
+        var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+        document.getElementById('calMonthLabel').textContent = monthNames[currentMonth] + ' ' + currentYear;
+
+        var grid = document.getElementById('calGrid');
+        var html = '';
+        var dayNames = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+        dayNames.forEach(function(d) { html += '<div class="cal-day-header">' + d + '</div>'; });
+
+        var firstDay = new Date(currentYear, currentMonth, 1);
+        var startDow = (firstDay.getDay() + 6) % 7; // Monday = 0
+        var daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+        var prevDays = new Date(currentYear, currentMonth, 0).getDate();
+
+        var todayStr = new Date().toISOString().split('T')[0];
+        var totalCells = Math.ceil((startDow + daysInMonth) / 7) * 7;
+
+        for (var i = 0; i < totalCells; i++) {
+          var dayNum, dateKey, isOther = false;
+          if (i < startDow) {
+            dayNum = prevDays - startDow + 1 + i;
+            var pm = currentMonth === 0 ? 11 : currentMonth - 1;
+            var py = currentMonth === 0 ? currentYear - 1 : currentYear;
+            dateKey = dateStr(py, pm, dayNum);
+            isOther = true;
+          } else if (i >= startDow + daysInMonth) {
+            dayNum = i - startDow - daysInMonth + 1;
+            var nm = currentMonth === 11 ? 0 : currentMonth + 1;
+            var ny = currentMonth === 11 ? currentYear + 1 : currentYear;
+            dateKey = dateStr(ny, nm, dayNum);
+            isOther = true;
+          } else {
+            dayNum = i - startDow + 1;
+            dateKey = dateStr(currentYear, currentMonth, dayNum);
+          }
+
+          var isToday = dateKey === todayStr;
+          var cls = 'cal-day' + (isOther ? ' other-month' : '') + (isToday ? ' today' : '');
+
+          var dayItems = items.filter(function(it) { return it.date === dateKey; });
+          var chipsHtml = '';
+          dayItems.forEach(function(it) {
+            chipsHtml += '<div class="content-chip type-' + it.type + '" draggable="true" data-id="' + it.id + '" ' +
+              'ondragstart="startDragContent(event, \\'' + it.id + '\\')" ondragend="endDragContent(event)" ' +
+              'ondblclick="openContentModal(\\'' + it.id + '\\')" title="' + escAttr(it.title) + '">' +
+              typeIcon(it.type) + ' ' + escH(it.title) + '</div>';
+          });
+
+          html += '<div class="' + cls + '" data-date="' + dateKey + '" ' +
+            'ondragover="event.preventDefault();this.classList.add(\\'drag-over\\')" ' +
+            'ondragleave="this.classList.remove(\\'drag-over\\')" ' +
+            'ondrop="dropOnDay(event, \\'' + dateKey + '\\')">' +
+            '<div class="day-num">' + dayNum + '</div>' +
+            '<button class="day-add" onclick="openContentModal(null, \\'' + dateKey + '\\')">+</button>' +
+            chipsHtml + '</div>';
+        }
+        grid.innerHTML = html;
+      }
+
+      function renderList() {
+        var sorted = items.slice().sort(function(a, b) {
+          if (!a.date && !b.date) return 0;
+          if (!a.date) return 1;
+          if (!b.date) return -1;
+          return a.date.localeCompare(b.date);
+        });
+
+        var typeColors = { video: '#3742fa', short: '#a29bfe', livestream: '#ff4757', community: '#2ed573' };
+        var html = '';
+        sorted.forEach(function(it) {
+          var dateLabel = it.date ? new Date(it.date + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Unscheduled';
+          html += '<div class="list-item" ondblclick="openContentModal(\\'' + it.id + '\\')">' +
+            '<div class="list-type" style="background:' + (typeColors[it.type] || '#5a6a8a') + '"></div>' +
+            '<div class="list-info"><div class="list-title">' + typeIcon(it.type) + ' ' + escH(it.title) + '</div>' +
+            '<div class="list-desc">' + escH(it.notes || 'No notes') + '</div></div>' +
+            '<div class="list-meta">' +
+              '<span class="status-badge status-' + it.status + '">' + it.status + '</span>' +
+              '<span class="list-date">' + dateLabel + '</span>' +
+            '</div></div>';
+        });
+        if (!html) html = '<p style="color:#5a6a8a;text-align:center;padding:3rem">No content yet — click + New Content to get started</p>';
+        document.getElementById('listView').innerHTML = html;
+      }
+
+      function typeIcon(t) {
+        var icons = { video: '🎬', short: '📱', livestream: '🔴', community: '💬' };
+        return icons[t] || '📄';
+      }
+
+      function startDragContent(e, id) {
+        draggedContentId = id;
+        e.target.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      }
+      function endDragContent(e) { e.target.classList.remove('dragging'); draggedContentId = null; }
+      function dropOnDay(e, dateKey) {
+        e.preventDefault();
+        e.currentTarget.classList.remove('drag-over');
+        if (!draggedContentId) return;
+        var item = items.find(function(i) { return i.id === draggedContentId; });
+        if (item) { item.date = dateKey; saveItems(); renderCalendar(); renderList(); }
+      }
+
+      function openContentModal(editId, preDate) {
+        document.getElementById('contentModalOverlay').classList.add('active');
+        if (editId) {
+          var item = items.find(function(i) { return i.id === editId; });
+          if (!item) return;
+          document.getElementById('contentModalTitle').textContent = 'Edit Content';
+          document.getElementById('contentId').value = item.id;
+          document.getElementById('contentTitle').value = item.title;
+          document.getElementById('contentType').value = item.type;
+          document.getElementById('contentStatus').value = item.status;
+          document.getElementById('contentDate').value = item.date || '';
+          document.getElementById('contentNotes').value = item.notes || '';
+          document.getElementById('contentTags').value = item.tags || '';
+          document.getElementById('contentDeleteBtn').style.display = 'block';
+        } else {
+          document.getElementById('contentModalTitle').textContent = 'New Content';
+          document.getElementById('contentId').value = '';
+          document.getElementById('contentTitle').value = '';
+          document.getElementById('contentType').value = 'video';
+          document.getElementById('contentStatus').value = 'idea';
+          document.getElementById('contentDate').value = preDate || '';
+          document.getElementById('contentNotes').value = '';
+          document.getElementById('contentTags').value = '';
+          document.getElementById('contentDeleteBtn').style.display = 'none';
+        }
+        setTimeout(function() { document.getElementById('contentTitle').focus(); }, 100);
+      }
+
+      function closeContentModal() { document.getElementById('contentModalOverlay').classList.remove('active'); }
+
+      function saveContent() {
+        var title = document.getElementById('contentTitle').value.trim();
+        if (!title) return;
+        var id = document.getElementById('contentId').value;
+        var data = {
+          title: title,
+          type: document.getElementById('contentType').value,
+          status: document.getElementById('contentStatus').value,
+          date: document.getElementById('contentDate').value,
+          notes: document.getElementById('contentNotes').value.trim(),
+          tags: document.getElementById('contentTags').value.trim(),
+        };
+        if (id) {
+          var item = items.find(function(i) { return i.id === id; });
+          if (item) Object.assign(item, data);
+        } else {
+          data.id = genId();
+          data.created = Date.now();
+          items.push(data);
+        }
+        saveItems();
+        renderCalendar();
+        renderList();
+        closeContentModal();
+      }
+
+      function deleteContent() {
+        var id = document.getElementById('contentId').value;
+        if (id) {
+          items = items.filter(function(i) { return i.id !== id; });
+          saveItems();
+          renderCalendar();
+          renderList();
+          closeContentModal();
+        }
+      }
+
+      function escH(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+      function escAttr(s) { return s.replace(/'/g, "\\\\'").replace(/"/g, '&quot;'); }
+    </script>
+    <script>document.getElementById('nav-content').classList.add('active');</script>
+  </body></html>`);
+});
 
 // ─── Health Check ────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({
