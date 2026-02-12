@@ -727,3 +727,5 @@ app.get('/health', (req, res) => res.json({ status: 'ok', agents: AGENTS.length 
 app.listen(port, () => {
   console.log(`Mission Control running on port ${port}`);
 });
+
+module.exports = app;
