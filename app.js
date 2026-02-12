@@ -128,6 +128,12 @@ async function callLLM(agent, messages) {
 
 // ─── Shared Styles ───────────────────────────────────────────────────────────
 const NAV_STYLE = `
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0a0e27">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Mission Ctrl">
+  <link rel="apple-touch-icon" sizes="180x180" href="/api/icon/180">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -180,6 +186,7 @@ const NAV_HTML = `
     <a href="/pipeline" id="nav-pipeline">Pipeline</a>
     <a href="/content" id="nav-content">Content</a>
   </nav>
+  <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/service-worker.js').catch(function(){})}</script>
 `;
 
 // ─── Home Page ───────────────────────────────────────────────────────────────
@@ -205,12 +212,59 @@ app.get('/', (req, res) => {
       .card .icon { font-size: 2rem; margin-bottom: 1rem; }
       .card h2 { color: #c0d0e8; font-size: 1.2rem; margin-bottom: 0.5rem; }
       .card p { color: #5a6a8a; font-size: 0.9rem; line-height: 1.6; }
+
+      /* Market Dashboard */
+      .market-section { margin-bottom: 3rem; }
+      .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem; }
+      .section-header h2 { font-size: 1.3rem; font-weight: 700; color: #c0d0e8; display: flex; align-items: center; gap: 0.5rem; }
+      .refresh-badge { font-size: 0.72rem; color: #3a4a6a; background: rgba(255,255,255,0.04); padding: 0.3rem 0.8rem; border-radius: 50px; display: flex; align-items: center; gap: 0.4rem; }
+      .refresh-badge .livedot { width: 6px; height: 6px; border-radius: 50%; background: #2ed573; animation: liveblink 2s infinite; }
+      @keyframes liveblink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+      .ticker-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 1rem; }
+      .ticker-card { background: rgba(20, 25, 50, 0.5); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; padding: 1.25rem; transition: all 0.3s; position: relative; overflow: hidden; }
+      .ticker-card:hover { border-color: rgba(255,255,255,0.15); transform: translateY(-3px); box-shadow: 0 12px 30px rgba(0,0,0,0.3); }
+      .ticker-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.5rem; }
+      .ticker-name { font-weight: 600; font-size: 0.82rem; color: #8b9dc3; }
+      .ticker-symbol { font-size: 0.65rem; color: #3a4a6a; background: rgba(255,255,255,0.04); padding: 0.12rem 0.45rem; border-radius: 50px; }
+      .ticker-price { font-size: 1.45rem; font-weight: 800; margin-bottom: 0.15rem; }
+      .ticker-change { font-size: 0.75rem; font-weight: 600; margin-bottom: 0.5rem; }
+      .ticker-spark { opacity: 0.7; }
+      .ticker-spark svg { display: block; width: 100%; height: 36px; }
+      .ticker-loading { grid-column: 1 / -1; text-align: center; padding: 2.5rem; color: #3a4a6a; font-size: 0.9rem; }
+      .ticker-error { color: #5a6a8a; font-size: 0.82rem; padding: 0.5rem 0; }
+
+      /* PWA Install Banner */
+      .pwa-banner { display: none; background: linear-gradient(135deg, rgba(0,212,255,0.1), rgba(123,47,247,0.1)); border: 1px solid rgba(0,212,255,0.2); border-radius: 14px; padding: 1rem 1.5rem; margin-bottom: 2rem; align-items: center; gap: 1rem; }
+      .pwa-banner.show { display: flex; }
+      .pwa-banner .pwa-text { flex: 1; font-size: 0.88rem; color: #b0c4de; }
+      .pwa-banner .pwa-text strong { color: #00d4ff; }
+      .pwa-btn { padding: 0.5rem 1.2rem; background: linear-gradient(135deg, #00d4ff, #7b2ff7); border: none; border-radius: 8px; color: white; font-weight: 600; font-size: 0.82rem; cursor: pointer; white-space: nowrap; }
+      .pwa-dismiss { background: none; border: none; color: #5a6a8a; cursor: pointer; font-size: 1.1rem; padding: 0.2rem; }
     </style>
   </head><body>
     ${NAV_HTML}
     <div class="container">
       <h1>Mission Control</h1>
       <p class="subtitle">AI-powered operations dashboard</p>
+
+      <!-- PWA Install Banner -->
+      <div class="pwa-banner" id="pwaBanner">
+        <div class="pwa-text"><strong>📱 Install Mission Control</strong> — Add to your home screen for instant access</div>
+        <button class="pwa-btn" id="pwaInstallBtn" onclick="installPWA()">Install</button>
+        <button class="pwa-dismiss" onclick="dismissPWA()">✕</button>
+      </div>
+
+      <!-- Live Markets -->
+      <div class="market-section">
+        <div class="section-header">
+          <h2>📊 Live Markets</h2>
+          <span class="refresh-badge"><span class="livedot"></span> <span id="refreshTimer">Loading...</span></span>
+        </div>
+        <div class="ticker-grid" id="tickerGrid">
+          <div class="ticker-loading">⏳ Loading market data...</div>
+        </div>
+      </div>
+
       <div class="cards">
         <a href="/council" class="card"><div class="icon">🤖</div><h2>AI Council</h2><p>8 specialized AI agents — led by Jarvis (Opus) — collaborate across Anthropic &amp; OpenAI to deliver decisive, multi-perspective analysis.</p></a>
         <a href="/growth" class="card"><div class="icon">📈</div><h2>Growth</h2><p>Track growth metrics, conversion funnels, and expansion opportunities.</p></a>
@@ -218,7 +272,72 @@ app.get('/', (req, res) => {
         <a href="/content" class="card"><div class="icon">✍️</div><h2>Content</h2><p>Content calendar, ideas engine, and publishing workflow.</p></a>
       </div>
     </div>
-    <script>document.getElementById('nav-home').classList.add('active');</script>
+    <script>
+      document.getElementById('nav-home').classList.add('active');
+
+      // ── Market Dashboard ──
+      var refreshSec = 60;
+      function loadMarkets() {
+        fetch('/api/market').then(function(r){return r.json()}).then(function(data){
+          if(data.error){document.getElementById('tickerGrid').innerHTML='<div class="ticker-loading">Market data unavailable</div>';return;}
+          renderTickers(data.tickers);
+          refreshSec = 60;
+        }).catch(function(){
+          document.getElementById('tickerGrid').innerHTML='<div class="ticker-loading">Market data unavailable — will retry</div>';
+          refreshSec = 60;
+        });
+      }
+      function renderTickers(tickers) {
+        var grid = document.getElementById('tickerGrid');
+        grid.innerHTML = tickers.map(function(t){
+          if(!t.price && t.price !== 0) return '<div class="ticker-card"><div class="ticker-header"><span class="ticker-name">'+t.icon+' '+t.name+'</span><span class="ticker-symbol">'+t.symbol+'</span></div><div class="ticker-error">Unavailable</div></div>';
+          var isUp = t.change >= 0;
+          var clr = isUp ? '#2ed573' : '#ff4757';
+          var arrow = isUp ? '▲' : '▼';
+          var priceStr = t.currency === 'AUD' ? 'A$' : '$';
+          priceStr += t.price >= 1000 ? t.price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) : t.price < 1 ? t.price.toFixed(4) : t.price.toFixed(2);
+          var sparkSvg = makeSparkline(t.sparkline || [], clr);
+          return '<div class="ticker-card"><div class="ticker-header"><span class="ticker-name">'+t.icon+' '+t.name+'</span><span class="ticker-symbol">'+t.symbol+'</span></div><div class="ticker-price" style="color:'+clr+'">'+priceStr+'</div><div class="ticker-change" style="color:'+clr+'">'+arrow+' '+Math.abs(t.change).toFixed(2)+' ('+Math.abs(t.changePercent).toFixed(2)+'%)</div><div class="ticker-spark">'+sparkSvg+'</div></div>';
+        }).join('');
+      }
+      function makeSparkline(data, color) {
+        if(!data||data.length<2)return '';
+        var w=160,h=36,mn=Math.min.apply(null,data),mx=Math.max.apply(null,data),rng=mx-mn||1;
+        var pts=data.map(function(v,i){return (i/(data.length-1))*w+','+(h-((v-mn)/rng)*h*0.85-h*0.05);}).join(' ');
+        var fill=pts+' '+w+','+h+' 0,'+h;
+        return '<svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none"><defs><linearGradient id="sg'+color.replace('#','')+'" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+color+'" stop-opacity="0.3"/><stop offset="100%" stop-color="'+color+'" stop-opacity="0"/></linearGradient></defs><polygon points="'+fill+'" fill="url(#sg'+color.replace('#','')+')" /><polyline points="'+pts+'" fill="none" stroke="'+color+'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      }
+      loadMarkets();
+      setInterval(function(){
+        refreshSec--;
+        if(refreshSec<=0){loadMarkets();}
+        var el=document.getElementById('refreshTimer');
+        if(el)el.textContent=refreshSec>0?'Refresh in '+refreshSec+'s':'Refreshing...';
+      },1000);
+
+      // ── PWA Install ──
+      var deferredPrompt = null;
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        deferredPrompt = e;
+        if(!localStorage.getItem('pwa_dismissed')){document.getElementById('pwaBanner').classList.add('show');}
+      });
+      function installPWA(){
+        if(deferredPrompt){deferredPrompt.prompt();deferredPrompt.userChoice.then(function(){deferredPrompt=null;document.getElementById('pwaBanner').classList.remove('show');});}
+        else{
+          // iOS fallback
+          document.getElementById('pwaBanner').querySelector('.pwa-text').innerHTML='<strong>📱 To install:</strong> Tap <strong>Share</strong> → <strong>Add to Home Screen</strong>';
+          document.getElementById('pwaInstallBtn').style.display='none';
+        }
+      }
+      function dismissPWA(){document.getElementById('pwaBanner').classList.remove('show');localStorage.setItem('pwa_dismissed','1');}
+      // Show iOS install hint
+      var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      var isStandalone = window.navigator.standalone === true;
+      if(isIOS && !isStandalone && !localStorage.getItem('pwa_dismissed')){
+        setTimeout(function(){document.getElementById('pwaBanner').classList.add('show');},2000);
+      }
+    </script>
   </body></html>`);
 });
 
@@ -736,12 +855,17 @@ app.get('/council', (req, res) => {
     <script>
       const AGENTS = ${allAgentsJSON};
       const COUNCIL = AGENTS.filter(a => a.id !== 'jarvis');
-      const JARVIS = AGENTS.find(a => a.id === 'jarvis');
+      const JARVIS_AGENT = AGENTS.find(a => a.id === 'jarvis');
       const feed = document.getElementById('feed');
       const promptInput = document.getElementById('prompt');
       const submitBtn = document.getElementById('submitBtn');
       let isRunning = false;
       let sessionCount = 0;
+
+      // Multi-turn conversation state
+      let conversationRounds = []; // Array of {prompt, responses:[{name,role,text}]}
+      let currentRoundResponses = [];
+      let currentRoundPrompt = '';
 
       function resetChips() {
         AGENTS.forEach(a => {
@@ -826,9 +950,20 @@ app.get('/council', (req, res) => {
             '<h3>Jarvis — Final Decision</h3>' +
             '<span class="jarvis-badge">Opus · Chief of Staff</span>' +
           '</div>' +
-          '<div class="jarvis-body">' + formatMarkdown(text) + '</div>';
+          '<div class="jarvis-body">' + formatMarkdown(text) + '</div>' +
+          '<div style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid rgba(249,202,36,0.15);display:flex;align-items:center;gap:0.75rem">' +
+            '<button onclick="startContinueDiscussion()" style="padding:0.6rem 1.4rem;background:rgba(249,202,36,0.12);border:1px solid rgba(249,202,36,0.3);border-radius:10px;color:#f9ca24;font-weight:600;font-size:0.82rem;cursor:pointer;font-family:inherit;transition:all 0.3s" onmouseover="this.style.background=\'rgba(249,202,36,0.2)\'" onmouseout="this.style.background=\'rgba(249,202,36,0.12)\'">💬 Continue Discussion</button>' +
+            '<span style="font-size:0.72rem;color:#4a5a6a">Ask a follow-up with full context</span>' +
+          '</div>';
         feed.appendChild(div);
         scrollToBottom();
+      }
+
+      function startContinueDiscussion() {
+        promptInput.placeholder = 'Ask a follow-up question (the council has full context)...';
+        submitBtn.textContent = 'Continue Discussion';
+        promptInput.focus();
+        promptInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
 
       function addError(text) {
@@ -867,6 +1002,10 @@ app.get('/council', (req, res) => {
         submitBtn.textContent = 'Council in session...';
         promptInput.value = '';
 
+        // Track current round
+        currentRoundResponses = [];
+        currentRoundPrompt = prompt;
+
         if (sessionCount === 0) {
           feed.innerHTML = '';
         } else {
@@ -876,19 +1015,25 @@ app.get('/council', (req, res) => {
         }
         sessionCount++;
 
+        const isFollowUp = conversationRounds.length > 0;
         const badge = document.createElement('div');
         badge.className = 'session-info';
-        badge.innerHTML = '<span>Session #' + sessionCount + '</span>';
+        badge.innerHTML = '<span>' + (isFollowUp ? 'Follow-up Round #' + (conversationRounds.length + 1) : 'Session #' + sessionCount) + '</span>';
         feed.appendChild(badge);
 
         resetChips();
         addUserMessage(prompt);
 
         try {
+          const reqBody = { prompt };
+          if (conversationRounds.length > 0) {
+            reqBody.history = conversationRounds;
+          }
+
           const res = await fetch('/api/council', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt }),
+            body: JSON.stringify(reqBody),
           });
 
           const reader = res.body.getReader();
@@ -923,6 +1068,7 @@ app.get('/council', (req, res) => {
                     removeTypingIndicator(agent.id);
                     doneChip(agent.id);
                     addAgentMessage(agent, evt.text);
+                    currentRoundResponses.push({ name: agent.name, role: agent.role, text: evt.text });
                   }
                 } else if (evt.type === 'phase') {
                   addPhaseDivider();
@@ -930,6 +1076,9 @@ app.get('/council', (req, res) => {
                   removeTypingIndicator('jarvis');
                   doneChip('jarvis');
                   addJarvisDecision(evt.text);
+                  currentRoundResponses.push({ name: 'Jarvis', role: 'Chief of Staff', text: evt.text });
+                  // Save this round to conversation history
+                  conversationRounds.push({ prompt: currentRoundPrompt, responses: currentRoundResponses });
                 } else if (evt.type === 'error') {
                   addError(evt.text);
                 }
@@ -942,7 +1091,10 @@ app.get('/council', (req, res) => {
 
         isRunning = false;
         submitBtn.disabled = false;
-        submitBtn.textContent = 'Convene Council';
+        submitBtn.textContent = conversationRounds.length > 0 ? 'Continue Discussion' : 'Convene Council';
+        if (conversationRounds.length > 0) {
+          promptInput.placeholder = 'Ask a follow-up question (the council has full context)...';
+        }
       }
 
       promptInput.addEventListener('keydown', (e) => {
@@ -958,7 +1110,7 @@ app.get('/council', (req, res) => {
 
 // ─── Council API (SSE streaming) ─────────────────────────────────────────────
 app.post('/api/council', async (req, res) => {
-  const { prompt } = req.body;
+  const { prompt, history } = req.body;
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
     return res.status(400).json({ error: 'Prompt is required.' });
   }
@@ -978,6 +1130,20 @@ app.post('/api/council', async (req, res) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
+  // Build prior conversation context from history
+  const hasHistory = Array.isArray(history) && history.length > 0;
+  let priorContext = '';
+  if (hasHistory) {
+    const rounds = history.map((round, i) => {
+      let r = `--- Round ${i + 1} ---\nUser: "${round.prompt}"`;
+      (round.responses || []).forEach(resp => {
+        r += `\n[${resp.name} — ${resp.role}]: ${resp.text}`;
+      });
+      return r;
+    }).join('\n\n');
+    priorContext = `=== Previous Discussion ===\n${rounds}\n\n=== Current Follow-up ===\n`;
+  }
+
   const conversationHistory = [];
 
   try {
@@ -985,14 +1151,25 @@ app.post('/api/council', async (req, res) => {
     for (const agent of COUNCIL_AGENTS) {
       send({ type: 'thinking', agentId: agent.id });
 
+      const systemContent = hasHistory
+        ? agent.system + `\n\nIMPORTANT: This is a follow-up round in an ongoing council discussion. The user has a new question based on the previous rounds. Build on prior insights — don't repeat what was already said. Address the new question directly.`
+        : agent.system;
+
+      let userContent;
+      if (hasHistory) {
+        userContent = priorContext + `User follow-up: "${prompt.trim()}"`;
+        if (conversationHistory.length > 0) {
+          userContent += `\n\nCouncil discussion this round so far:\n${conversationHistory.map(h => `[${h.name} — ${h.role}]: ${h.text}`).join('\n\n')}`;
+        }
+      } else {
+        userContent = conversationHistory.length === 0
+          ? `User prompt: "${prompt.trim()}"`
+          : `User prompt: "${prompt.trim()}"\n\nCouncil discussion so far:\n${conversationHistory.map(h => `[${h.name} — ${h.role}]: ${h.text}`).join('\n\n')}`;
+      }
+
       const messages = [
-        { role: 'system', content: agent.system },
-        {
-          role: 'user',
-          content: conversationHistory.length === 0
-            ? `User prompt: "${prompt.trim()}"`
-            : `User prompt: "${prompt.trim()}"\n\nCouncil discussion so far:\n${conversationHistory.map(h => `[${h.name} — ${h.role}]: ${h.text}`).join('\n\n')}`,
-        },
+        { role: 'system', content: systemContent },
+        { role: 'user', content: userContent },
       ];
 
       try {
@@ -1010,12 +1187,20 @@ app.post('/api/council', async (req, res) => {
     send({ type: 'phase' });
     send({ type: 'thinking', agentId: 'jarvis' });
 
+    const jarvisSystem = hasHistory
+      ? JARVIS.system + `\n\nThis is a follow-up round. The user asked a new question after your previous decision. Reference your prior decision where relevant and address the new question decisively.`
+      : JARVIS.system;
+
+    let jarvisUserContent;
+    if (hasHistory) {
+      jarvisUserContent = priorContext + `User follow-up: "${prompt.trim()}"\n\nFull council transcript this round:\n${conversationHistory.map(h => `[${h.name} — ${h.role}]: ${h.text}`).join('\n\n')}\n\nYou are Jarvis. Address this follow-up decisively.`;
+    } else {
+      jarvisUserContent = `Original prompt: "${prompt.trim()}"\n\nFull council transcript:\n${conversationHistory.map(h => `[${h.name} — ${h.role}]: ${h.text}`).join('\n\n')}\n\nYou are Jarvis. You've heard everyone. Now make the call.`;
+    }
+
     const jarvisMessages = [
-      { role: 'system', content: JARVIS.system },
-      {
-        role: 'user',
-        content: `Original prompt: "${prompt.trim()}"\n\nFull council transcript:\n${conversationHistory.map(h => `[${h.name} — ${h.role}]: ${h.text}`).join('\n\n')}\n\nYou are Jarvis. You've heard everyone. Now make the call.`,
-      },
+      { role: 'system', content: jarvisSystem },
+      { role: 'user', content: jarvisUserContent },
     ];
 
     const jarvisText = await callLLM(JARVIS, jarvisMessages);
@@ -1973,6 +2158,7 @@ app.get('/content', (req, res) => {
             <button id="viewCalBtn" class="active" onclick="setView('calendar')">📅 Calendar</button>
             <button id="viewListBtn" onclick="setView('list')">📋 List</button>
           </div>
+          <button class="btn btn-ghost" id="autoGenBtn" onclick="autoGenerateContent()" style="display:flex;align-items:center;gap:0.4rem">🤖 Auto-Generate 30 Days</button>
           <button class="btn btn-primary" onclick="openContentModal()">+ New Content</button>
         </div>
       </div>
@@ -2255,9 +2441,277 @@ app.get('/content', (req, res) => {
 
       function escH(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
       function escAttr(s) { return s.replace(/'/g, "\\\\'").replace(/"/g, '&quot;'); }
+
+      // Auto-generate content
+      async function autoGenerateContent() {
+        var btn = document.getElementById('autoGenBtn');
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Generating...';
+        try {
+          var res = await fetch('/api/content/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ niche: 'tech, AI, content creation, entrepreneurship' })
+          });
+          var data = await res.json();
+          if (data.error) { alert('Error: ' + data.error); return; }
+          if (data.items && data.items.length > 0) {
+            data.items.forEach(function(item) {
+              item.id = genId();
+              item.created = Date.now();
+              items.push(item);
+            });
+            saveItems();
+            renderCalendar();
+            renderList();
+            alert('✅ Generated ' + data.items.length + ' content ideas!');
+          }
+        } catch (err) {
+          alert('Failed to generate: ' + err.message);
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = '🤖 Auto-Generate 30 Days';
+        }
+      }
     </script>
     <script>document.getElementById('nav-content').classList.add('active');</script>
   </body></html>`);
+});
+
+// ─── PWA: Manifest ───────────────────────────────────────────────────────────
+app.get('/manifest.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/manifest+json');
+  res.json({
+    name: 'Mission Control',
+    short_name: 'Mission Ctrl',
+    description: 'AI-powered operations dashboard — 8-agent council led by Jarvis',
+    start_url: '/',
+    display: 'standalone',
+    background_color: '#0a0e27',
+    theme_color: '#0a0e27',
+    orientation: 'any',
+    icons: [
+      { src: '/api/icon/192', sizes: '192x192', type: 'image/png' },
+      { src: '/api/icon/512', sizes: '512x512', type: 'image/png' },
+      { src: '/api/icon/180', sizes: '180x180', type: 'image/png', purpose: 'apple touch icon' },
+      { src: '/api/icon/512', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    ],
+    categories: ['productivity', 'business'],
+    shortcuts: [
+      { name: 'AI Council', url: '/council', description: 'Convene the AI Council' },
+      { name: 'Content Calendar', url: '/content', description: 'Manage content' },
+      { name: 'Pipeline', url: '/pipeline', description: 'View pipeline' },
+    ],
+  });
+});
+
+// ─── PWA: Service Worker ─────────────────────────────────────────────────────
+app.get('/service-worker.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.send(`
+const CACHE_NAME = 'mc-v2';
+const SHELL_URLS = ['/', '/council', '/growth', '/pipeline', '/content'];
+
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(SHELL_URLS)).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys => Promise.all(
+      keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+    )).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  // Skip API calls and non-GET requests
+  if (event.request.method !== 'GET' || url.pathname.startsWith('/api/')) {
+    return;
+  }
+  event.respondWith(
+    fetch(event.request).then(response => {
+      const clone = response.clone();
+      caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+      return response;
+    }).catch(() => caches.match(event.request).then(r => r || new Response(
+      '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline — Mission Control</title><style>body{font-family:-apple-system,sans-serif;background:#0a0e27;color:#e0e0e0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center}h1{font-size:2rem;background:linear-gradient(135deg,#00d4ff,#7b2ff7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}p{color:#5a6a8a}</style></head><body><div><h1>📡 Offline</h1><p>Mission Control will reconnect when you are back online.</p></div></body></html>',
+      { headers: { 'Content-Type': 'text/html' } }
+    )))
+  );
+});
+`);
+});
+
+// ─── PWA: Icon Generator ─────────────────────────────────────────────────────
+app.get('/api/icon/:size', (req, res) => {
+  const size = parseInt(req.params.size) || 192;
+  // Generate a simple SVG icon and convert it to an inline SVG served as image
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#0a0e27"/>
+        <stop offset="100%" stop-color="#1a1f3a"/>
+      </linearGradient>
+      <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#00d4ff"/>
+        <stop offset="100%" stop-color="#7b2ff7"/>
+      </linearGradient>
+    </defs>
+    <rect width="${size}" height="${size}" rx="${size * 0.2}" fill="url(#bg)"/>
+    <text x="50%" y="53%" text-anchor="middle" dominant-baseline="central" font-family="Arial,sans-serif" font-weight="800" font-size="${size * 0.35}" fill="url(#accent)">MC</text>
+    <rect x="${size * 0.15}" y="${size * 0.78}" width="${size * 0.7}" height="${size * 0.04}" rx="${size * 0.02}" fill="url(#accent)" opacity="0.6"/>
+  </svg>`;
+  res.setHeader('Content-Type', 'image/svg+xml');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.send(svg);
+});
+
+// ─── Market Data API ─────────────────────────────────────────────────────────
+app.get('/api/market', async (req, res) => {
+  const tickers = [
+    { symbol: 'TSLA', name: 'Tesla', icon: '⚡' },
+    { symbol: 'VAS.AX', name: 'Vanguard Aus', icon: '🇦🇺' },
+    { symbol: 'KTOS', name: 'Kratos Defense', icon: '🛡️' },
+    { symbol: 'NVDA', name: 'NVIDIA', icon: '🟢' },
+    { symbol: 'BTC-USD', name: 'Bitcoin', icon: '₿' },
+    { symbol: 'GC=F', name: 'Gold (XAU)', icon: '🥇' },
+    { symbol: 'SI=F', name: 'Silver (XAG)', icon: '🥈' },
+  ];
+
+  try {
+    const results = await Promise.allSettled(
+      tickers.map(async (t) => {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(t.symbol)}?range=5d&interval=1h&includePrePost=false`;
+        const resp = await fetch(url, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MissionControl/2.0)' }
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const result = data.chart?.result?.[0];
+        if (!result) throw new Error('No data for ' + t.symbol);
+
+        const meta = result.meta;
+        const price = meta.regularMarketPrice;
+        const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+        const change = price - prevClose;
+        const changePercent = prevClose > 0 ? (change / prevClose) * 100 : 0;
+
+        const closes = result.indicators?.quote?.[0]?.close || [];
+        const sparkline = closes.filter(v => v != null).slice(-30);
+
+        return {
+          ...t,
+          price,
+          change,
+          changePercent,
+          currency: meta.currency || 'USD',
+          sparkline,
+        };
+      })
+    );
+
+    const data = results.map((r, i) => {
+      if (r.status === 'fulfilled') return r.value;
+      return { ...tickers[i], price: null, error: r.reason?.message || 'Failed' };
+    });
+
+    res.setHeader('Cache-Control', 'public, max-age=30');
+    res.json({ tickers: data, timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Content Auto-Generation API ─────────────────────────────────────────────
+app.post('/api/content/generate', async (req, res) => {
+  const { niche } = req.body;
+
+  if (!anthropic && !openai) {
+    return res.status(500).json({ error: 'No AI API keys configured.' });
+  }
+
+  const today = new Date();
+  const dateStr = (d) => d.toISOString().split('T')[0];
+
+  const systemPrompt = `You are an expert content strategist. Generate a 30-day content calendar.
+Return ONLY valid JSON — no markdown, no code fences, no explanation. Return an array of objects with these exact keys:
+- title: compelling title
+- type: one of "linkedin", "youtube", "twitter", "short"
+- status: "idea"
+- date: ISO date string (YYYY-MM-DD)
+- notes: 2-3 sentence draft copy or outline
+- tags: comma-separated relevant tags
+- postTime: optimal posting time (e.g. "9:00 AM EST")
+
+Mix platforms roughly evenly. Space content across all 30 days. Include a variety of:
+- LinkedIn thought leadership posts
+- YouTube video concepts
+- Twitter/X thread ideas
+- Short-form video ideas
+
+Make all content specific, actionable, and tailored to the niche. Vary post times for optimal engagement per platform.`;
+
+  const userPrompt = `Generate a 30-day content calendar starting from ${dateStr(today)} for this niche/topics: ${niche || 'tech, AI, entrepreneurship, content creation'}
+
+Return ONLY the JSON array. No other text.`;
+
+  try {
+    let responseText;
+
+    if (anthropic) {
+      const resp = await anthropic.messages.create({
+        model: MODELS.SONNET,
+        max_tokens: 4000,
+        temperature: 0.9,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      });
+      responseText = resp.content[0]?.text?.trim() || '';
+    } else if (openai) {
+      const completion = await openai.chat.completions.create({
+        model: MODELS.GPT4O,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 4000,
+        temperature: 0.9,
+      });
+      responseText = completion.choices[0]?.message?.content?.trim() || '';
+    }
+
+    // Parse JSON from response (strip markdown fences if present)
+    let cleaned = responseText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    const items = JSON.parse(cleaned);
+
+    if (!Array.isArray(items)) {
+      return res.status(500).json({ error: 'AI returned invalid format' });
+    }
+
+    // Map to content calendar format
+    const mapped = items.map((item, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() + i);
+      const typeMap = { linkedin: 'community', youtube: 'video', twitter: 'community', short: 'short' };
+      return {
+        title: item.title || 'Untitled',
+        type: typeMap[item.type] || item.type || 'video',
+        status: 'idea',
+        date: item.date || dateStr(d),
+        notes: (item.notes || '') + (item.postTime ? '\\n⏰ Best time: ' + item.postTime : '') + (item.type ? '\\n📱 Platform: ' + item.type : ''),
+        tags: item.tags || '',
+      };
+    });
+
+    res.json({ items: mapped, count: mapped.length });
+  } catch (err) {
+    console.error('Content generation error:', err.message);
+    res.status(500).json({ error: 'Failed to generate content: ' + err.message });
+  }
 });
 
 // ─── Health Check ────────────────────────────────────────────────────────────
