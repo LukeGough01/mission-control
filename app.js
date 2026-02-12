@@ -166,7 +166,7 @@ const NAV_STYLE = `
       height: 2px; background: linear-gradient(90deg, #00d4ff, #7b2ff7);
       border-radius: 1px;
     }
-    .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
   </style>
 `;
@@ -234,6 +234,10 @@ app.get('/council', (req, res) => {
     ${NAV_STYLE}
     <style>
       /* ── Layout ── */
+      .council-layout {
+        display: flex; gap: 1.5rem; align-items: flex-start;
+      }
+      .council-main { flex: 1; min-width: 0; }
       .page-header { margin-bottom: 2rem; }
       .page-header h1 {
         font-size: 2.2rem; font-weight: 800;
@@ -241,27 +245,169 @@ app.get('/council', (req, res) => {
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
       }
       .page-header p { color: #5a6a8a; margin-top: 0.3rem; }
-      .page-header .model-info {
-        display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem;
+
+      /* ── Agent Sidebar ── */
+      .agent-sidebar {
+        width: 260px; flex-shrink: 0;
+        position: sticky; top: 80px;
+        display: flex; flex-direction: column; gap: 0;
       }
-      .page-header .model-badge {
-        font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 50px;
-        background: rgba(255,255,255,0.04); color: #5a6a8a;
+      .sidebar-panel {
+        background: rgba(12, 15, 30, 0.7);
+        backdrop-filter: blur(24px);
         border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 18px;
+        overflow: hidden;
       }
-      .page-header .model-badge.opus {
-        background: rgba(249, 202, 36, 0.1); color: #f9ca24;
-        border-color: rgba(249, 202, 36, 0.25);
+      .sidebar-header {
+        padding: 1rem 1.25rem 0.75rem;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+      }
+      .sidebar-header h3 {
+        font-size: 0.8rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 1.2px;
+        background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+        -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      }
+      .sidebar-header .sidebar-sub {
+        font-size: 0.68rem; color: #3a4a6a; margin-top: 0.2rem;
+      }
+      .sidebar-agents {
+        padding: 0.5rem 0;
+      }
+      .sidebar-agent {
+        display: flex; align-items: center; gap: 0.65rem;
+        padding: 0.6rem 1.25rem;
+        transition: all 0.4s ease;
+        position: relative;
+        cursor: default;
+      }
+      .sidebar-agent:hover {
+        background: rgba(255,255,255,0.02);
+      }
+      .sidebar-agent::before {
+        content: '';
+        position: absolute; left: 0; top: 15%; bottom: 15%;
+        width: 3px; border-radius: 0 3px 3px 0;
+        background: var(--agent-color);
+        opacity: 0;
+        transition: opacity 0.4s;
+      }
+      .sidebar-agent.active::before { opacity: 1; }
+      .sidebar-agent.active {
+        background: rgba(255,255,255,0.03);
+      }
+      .sidebar-agent .sa-icon {
+        width: 34px; height: 34px;
+        border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1rem; flex-shrink: 0;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.06);
+        transition: all 0.4s;
+        position: relative;
+      }
+      .sidebar-agent.active .sa-icon {
+        background: color-mix(in srgb, var(--agent-color) 12%, transparent);
+        border-color: color-mix(in srgb, var(--agent-color) 30%, transparent);
+        box-shadow: 0 0 12px color-mix(in srgb, var(--agent-color) 25%, transparent);
+      }
+      .sidebar-agent .sa-pulse {
+        position: absolute; inset: -3px;
+        border-radius: 12px;
+        border: 2px solid var(--agent-color);
+        opacity: 0;
+        animation: none;
+      }
+      .sidebar-agent.active .sa-pulse {
+        animation: sidebarPulse 2s ease-in-out infinite;
+      }
+      @keyframes sidebarPulse {
+        0%, 100% { opacity: 0; transform: scale(1); }
+        50% { opacity: 0.6; transform: scale(1.08); }
+      }
+      .sidebar-agent .sa-info { flex: 1; min-width: 0; }
+      .sidebar-agent .sa-name {
+        font-size: 0.82rem; font-weight: 600; color: #c0d0e8;
+        transition: color 0.4s;
+        display: flex; align-items: center; gap: 0.4rem;
+      }
+      .sidebar-agent.active .sa-name { color: var(--agent-color); }
+      .sidebar-agent .sa-role {
+        font-size: 0.68rem; color: #4a5a7a;
+        margin-top: 0.1rem;
+      }
+      .sidebar-agent .sa-model {
+        font-size: 0.58rem; padding: 0.12rem 0.45rem;
+        border-radius: 50px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.06);
+        color: #4a5a7a;
+        flex-shrink: 0;
+        transition: all 0.4s;
+      }
+      .sidebar-agent.active .sa-model {
+        background: color-mix(in srgb, var(--agent-color) 8%, transparent);
+        border-color: color-mix(in srgb, var(--agent-color) 20%, transparent);
+        color: var(--agent-color);
+      }
+      .sidebar-agent .sa-status {
+        width: 7px; height: 7px; border-radius: 50%;
+        background: #2a3040; flex-shrink: 0;
+        transition: all 0.4s;
+      }
+      .sidebar-agent.active .sa-status {
+        background: var(--agent-color);
+        box-shadow: 0 0 8px var(--agent-color);
+        animation: statusPulse 1.5s ease-in-out infinite;
+      }
+      .sidebar-agent.done .sa-status {
+        background: var(--agent-color);
+        opacity: 0.7;
+      }
+      @keyframes statusPulse {
+        0%, 100% { box-shadow: 0 0 4px var(--agent-color); }
+        50% { box-shadow: 0 0 12px var(--agent-color); }
+      }
+      .sidebar-divider {
+        padding: 0.5rem 1.25rem 0.3rem;
+        display: flex; align-items: center; gap: 0.5rem;
+      }
+      .sidebar-divider::before, .sidebar-divider::after {
+        content: ''; flex: 1; height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(249, 202, 36, 0.2), transparent);
+      }
+      .sidebar-divider span {
+        font-size: 0.6rem; color: #f9ca2480;
+        text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600;
+      }
+      .sidebar-agent.jarvis-agent .sa-icon {
+        background: rgba(249, 202, 36, 0.08);
+        border-color: rgba(249, 202, 36, 0.2);
+      }
+      .sidebar-agent.jarvis-agent .sa-name { color: #f9ca24; }
+      .sidebar-agent.jarvis-agent.active .sa-icon {
+        box-shadow: 0 0 16px rgba(249, 202, 36, 0.3);
       }
 
-      /* ── Agent Roster ── */
-      .roster {
-        display: flex; gap: 0.75rem; flex-wrap: wrap;
-        margin-bottom: 2rem; padding: 1.25rem;
-        background: rgba(15, 18, 35, 0.6);
-        border: 1px solid rgba(255,255,255,0.05);
-        border-radius: 14px;
+      /* ── Responsive ── */
+      @media (max-width: 960px) {
+        .council-layout { flex-direction: column-reverse; }
+        .agent-sidebar {
+          width: 100%; position: static;
+          flex-direction: row; overflow-x: auto;
+        }
+        .sidebar-panel { border-radius: 14px; min-width: 100%; }
+        .sidebar-agents {
+          display: flex; flex-wrap: wrap; gap: 0;
+        }
+        .sidebar-agent { padding: 0.5rem 0.8rem; }
+        .sidebar-divider { display: none; }
       }
+
+      /* ── Old Roster (removed — replaced by sidebar) ── */
+
+      /* ── Inline chip roster (kept for backward compat) ── */
       .agent-chip {
         display: flex; align-items: center; gap: 0.5rem;
         padding: 0.5rem 1rem; border-radius: 50px;
@@ -269,19 +415,6 @@ app.get('/council', (req, res) => {
         border: 1px solid rgba(255,255,255,0.08);
         font-size: 0.82rem; transition: all 0.4s;
         position: relative;
-      }
-      .agent-chip.jarvis-chip {
-        background: rgba(249, 202, 36, 0.06);
-        border-color: rgba(249, 202, 36, 0.15);
-        order: 100;
-      }
-      .roster-divider {
-        display: flex; align-items: center; padding: 0 0.5rem;
-        color: #3a4a6a; font-size: 0.75rem; order: 99;
-      }
-      .roster-divider::before, .roster-divider::after {
-        content: ''; flex: 0; height: 1px; width: 8px;
-        background: rgba(255,255,255,0.1); margin: 0 0.4rem;
       }
       .agent-chip .dot {
         width: 8px; height: 8px; border-radius: 50%;
@@ -521,67 +654,82 @@ app.get('/council', (req, res) => {
       <div class="page-header">
         <h1>🤖 AI Council</h1>
         <p>8 agents. Led by Jarvis. Multi-model AI collaboration across Anthropic &amp; OpenAI.</p>
-        <div class="model-info">
-          <span class="model-badge opus">👑 Jarvis — Opus (Final Decision)</span>
-          <span class="model-badge">♟️ Alpha — Sonnet 4.5</span>
-          <span class="model-badge">🔬 Beta — GPT-4o</span>
-          <span class="model-badge">⚡ Gamma — Haiku</span>
-          <span class="model-badge">📊 Delta — Sonnet</span>
-          <span class="model-badge">🎨 Epsilon — GPT-4o</span>
-          <span class="model-badge">🔧 Zeta — Haiku</span>
-          <span class="model-badge">🧬 Eta — Sonnet</span>
-        </div>
       </div>
 
-      <!-- Agent Roster -->
-      <div class="roster" id="roster">
-        ${COUNCIL_AGENTS.map(a => `
-          <div class="agent-chip" id="chip-${a.id}" style="--agent-color: ${a.color}">
-            <span class="dot" style="background: ${a.color}"></span>
-            <span class="name">${a.icon} ${a.name}</span>
-            <span class="role">${a.role}</span>
-            <span class="model-tag">${a.modelLabel}</span>
+      <div class="council-layout">
+        <!-- Main Content -->
+        <div class="council-main">
+          <!-- Input -->
+          <div class="input-area">
+            <input type="text" id="prompt" placeholder="Enter a challenge, question, or strategy for the council..." autocomplete="off" />
+            <button class="btn-primary" id="submitBtn" onclick="submitPrompt()">Convene Council</button>
           </div>
-        `).join('')}
-        <div class="roster-divider">→</div>
-        <div class="agent-chip jarvis-chip" id="chip-jarvis" style="--agent-color: #f9ca24">
-          <span class="dot" style="background: #f9ca24"></span>
-          <span class="name" style="color: #f9ca24">👑 Jarvis</span>
-          <span class="role">Chief of Staff</span>
-          <span class="model-tag" style="color: #f9ca24">Opus</span>
-        </div>
-      </div>
 
-      <!-- Input -->
-      <div class="input-area">
-        <input type="text" id="prompt" placeholder="Enter a challenge, question, or strategy for the council..." autocomplete="off" />
-        <button class="btn-primary" id="submitBtn" onclick="submitPrompt()">Convene Council</button>
-      </div>
-
-      <!-- Feed -->
-      <div id="feed">
-        <div class="empty-state">
-          <div class="icon">🏛️</div>
-          <p>The council chamber is ready.<br>8 agents await your prompt — 7 collaborate, then Jarvis decides.</p>
-          <div class="flow">
-            <span class="flow-step">♟️ Alpha</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step">🔬 Beta</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step">⚡ Gamma</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step">📊 Delta</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step">🎨 Epsilon</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step">🔧 Zeta</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step">🧬 Eta</span>
-            <span class="flow-arrow">→</span>
-            <span class="flow-step jarvis">👑 Jarvis</span>
+          <!-- Feed -->
+          <div id="feed">
+            <div class="empty-state">
+              <div class="icon">🏛️</div>
+              <p>The council chamber is ready.<br>8 agents await your prompt — 7 collaborate, then Jarvis decides.</p>
+              <div class="flow">
+                <span class="flow-step">♟️ Alpha</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-step">🔬 Beta</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-step">⚡ Gamma</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-step">📊 Delta</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-step">🎨 Epsilon</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-step">🔧 Zeta</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-step">🧬 Eta</span>
+                <span class="flow-arrow">→</span>
+                <span class="flow-step jarvis">👑 Jarvis</span>
+              </div>
+              <p class="hint">Cost-optimized: Haiku for speed · Sonnet for depth · GPT-4o for diversity · Opus for decisions</p>
+            </div>
           </div>
-          <p class="hint">Cost-optimized: Haiku for speed · Sonnet for depth · GPT-4o for diversity · Opus for decisions</p>
         </div>
+
+        <!-- Agent Roster Sidebar -->
+        <aside class="agent-sidebar">
+          <div class="sidebar-panel">
+            <div class="sidebar-header">
+              <h3>Agent Roster</h3>
+              <div class="sidebar-sub">8 agents · 4 models · 2 providers</div>
+            </div>
+            <div class="sidebar-agents">
+              ${COUNCIL_AGENTS.map(a => `
+              <div class="sidebar-agent" id="chip-${a.id}" style="--agent-color: ${a.color}">
+                <div class="sa-icon">
+                  ${a.icon}
+                  <div class="sa-pulse"></div>
+                </div>
+                <div class="sa-info">
+                  <div class="sa-name">${a.name}</div>
+                  <div class="sa-role">${a.role}</div>
+                </div>
+                <span class="sa-model">${a.modelLabel}</span>
+                <div class="sa-status"></div>
+              </div>
+              `).join('')}
+              <div class="sidebar-divider"><span>Decision</span></div>
+              <div class="sidebar-agent jarvis-agent" id="chip-jarvis" style="--agent-color: #f9ca24">
+                <div class="sa-icon">
+                  👑
+                  <div class="sa-pulse"></div>
+                </div>
+                <div class="sa-info">
+                  <div class="sa-name">Jarvis</div>
+                  <div class="sa-role">Chief of Staff</div>
+                </div>
+                <span class="sa-model">Opus</span>
+                <div class="sa-status"></div>
+              </div>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
 
