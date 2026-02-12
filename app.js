@@ -6,9 +6,8 @@ const port = process.env.PORT || 3000;
 app.use(express.json());
 
 // ─── OpenAI Client ───────────────────────────────────────────────────────────
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const OPENAI_KEY = process.env.OPENAI_API_KEY || '';
+const openai = OPENAI_KEY ? new OpenAI({ apiKey: OPENAI_KEY }) : null;
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
 
 // ─── Agent Definitions ───────────────────────────────────────────────────────
@@ -619,6 +618,9 @@ app.post('/api/council', async (req, res) => {
   const { prompt } = req.body;
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
     return res.status(400).json({ error: 'Prompt is required.' });
+  }
+  if (!openai) {
+    return res.status(500).json({ error: 'OPENAI_API_KEY not configured.' });
   }
 
   // Set up SSE
