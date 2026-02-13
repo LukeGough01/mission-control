@@ -15,11 +15,11 @@ const openai = OPENAI_KEY ? new OpenAI({ apiKey: OPENAI_KEY }) : null;
 
 // --─ Model Assignments (Cost-Optimized) --------------------------------------
 const MODELS = {
-  OPUS:       'claude-opus-4-6',       // Jarvis only — premium synthesis
-  SONNET_45:  'claude-sonnet-4-5-20250929',     // Alpha — strategic lead
-  SONNET:     'claude-sonnet-4-20250514',        // Delta, Eta — analytical depth
-  HAIKU:      'claude-haiku-4-5-20251001',       // Gamma, Zeta — fast & cheap
-  GPT4O:      'gpt-4o',                          // Beta, Epsilon — diversity of thought
+  OPUS:       'claude-opus-4-6',       // Jarvis only -- premium synthesis
+  SONNET_45:  'claude-sonnet-4-5-20250929',     // Alpha -- strategic lead
+  SONNET:     'claude-sonnet-4-20250514',        // Delta, Eta -- analytical depth
+  HAIKU:      'claude-haiku-4-5-20251001',       // Gamma, Zeta -- fast & cheap
+  GPT4O:      'gpt-4o',                          // Beta, Epsilon -- diversity of thought
 };
 
 // --─ Agent Definitions ------------------------------------------------------─
@@ -72,12 +72,12 @@ const JARVIS = {
   id: 'jarvis', name: 'Jarvis', role: 'Chief of Staff',
   color: '#f9ca24', icon: '👑',
   provider: 'anthropic', model: MODELS.OPUS, modelLabel: 'Opus',
-  system: `You are Jarvis, Chief of Staff and the decisive leader of an elite 8-member AI council. You have Opus-level intelligence and strategic vision. You've just heard from all 7 council members — Alpha (Strategist), Beta (Researcher), Gamma (Executor), Delta (Analyst), Epsilon (Creative), Zeta (Optimizer), and Eta (Synthesizer).
+  system: `You are Jarvis, Chief of Staff and the decisive leader of an elite 8-member AI council. You have Opus-level intelligence and strategic vision. You've just heard from all 7 council members -- Alpha (Strategist), Beta (Researcher), Gamma (Executor), Delta (Analyst), Epsilon (Creative), Zeta (Optimizer), and Eta (Synthesizer).
 
-Your job: Make the FINAL decision. Don't just summarize — DECIDE. Take a clear position. Your response structure:
+Your job: Make the FINAL decision. Don't just summarize -- DECIDE. Take a clear position. Your response structure:
 
 **🎯 Jarvis Decision:**
-(1-2 sentences — your clear verdict and strategic direction)
+(1-2 sentences -- your clear verdict and strategic direction)
 
 **📋 Action Plan:**
 (3-5 prioritized action items with owners where relevant)
@@ -86,7 +86,7 @@ Your job: Make the FINAL decision. Don't just summarize — DECIDE. Take a clear
 (2-3 risks with specific mitigations)
 
 **💡 Strategic Edge:**
-(1 sentence — the creative or competitive advantage)
+(1 sentence -- the creative or competitive advantage)
 
 **📊 Success Metrics:**
 (2-3 measurable KPIs)
@@ -250,7 +250,7 @@ app.get('/', (req, res) => {
 
       <!-- PWA Install Banner -->
       <div class="pwa-banner" id="pwaBanner">
-        <div class="pwa-text"><strong>📱 Install Mission Control</strong> — Add to your home screen for instant access</div>
+        <div class="pwa-text"><strong>📱 Install Mission Control</strong> -- Add to your home screen for instant access</div>
         <button class="pwa-btn" id="pwaInstallBtn" onclick="installPWA()">Install</button>
         <button class="pwa-dismiss" onclick="dismissPWA()">✕</button>
       </div>
@@ -267,11 +267,11 @@ app.get('/', (req, res) => {
       </div>
 
       <div class="cards">
-        <a href="/council" class="card"><div class="icon">🤖</div><h2>AI Council</h2><p>8 specialized AI agents — led by Jarvis (Opus) — collaborate across Anthropic &amp; OpenAI to deliver decisive, multi-perspective analysis.</p></a>
+        <a href="/council" class="card"><div class="icon">🤖</div><h2>AI Council</h2><p>8 specialized AI agents -- led by Jarvis (Opus) -- collaborate across Anthropic &amp; OpenAI to deliver decisive, multi-perspective analysis.</p></a>
         <a href="/growth" class="card"><div class="icon">📈</div><h2>Growth</h2><p>Track growth metrics, conversion funnels, and expansion opportunities.</p></a>
         <a href="/pipeline" class="card"><div class="icon">🔄</div><h2>Pipeline</h2><p>Manage your project pipeline from ideation to delivery.</p></a>
         <a href="/content" class="card"><div class="icon">✍️</div><h2>Content</h2><p>Content calendar, ideas engine, and publishing workflow.</p></a>
-        <a href="/memory" class="card"><div class="icon">🧠</div><h2>Second Brain</h2><p>Searchable memory vault — daily journals, long-term memory, and brain documents in one place.</p></a>
+        <a href="/memory" class="card"><div class="icon">🧠</div><h2>Second Brain</h2><p>Searchable memory vault -- daily journals, long-term memory, and brain documents in one place.</p></a>
       </div>
     </div>
     <script>
@@ -285,7 +285,7 @@ app.get('/', (req, res) => {
           renderTickers(data.tickers);
           refreshSec = 60;
         }).catch(function(){
-          document.getElementById('tickerGrid').innerHTML='<div class="ticker-loading">Market data unavailable — will retry</div>';
+          document.getElementById('tickerGrid').innerHTML='<div class="ticker-loading">Market data unavailable -- will retry</div>';
           refreshSec = 60;
         });
       }
@@ -351,7 +351,7 @@ app.get('/council', (req, res) => {
 
   res.send(`<!DOCTYPE html><html lang="en"><head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Council — Mission Control</title>
+    <title>AI Council -- Mission Control</title>
     ${NAV_STYLE}
     <style>
       /* -- Layout -- */
@@ -526,7 +526,7 @@ app.get('/council', (req, res) => {
         .sidebar-divider { display: none; }
       }
 
-      /* -- Old Roster (removed — replaced by sidebar) -- */
+      /* -- Old Roster (removed -- replaced by sidebar) -- */
 
       /* -- Inline chip roster (kept for backward compat) -- */
       .agent-chip {
@@ -790,7 +790,7 @@ app.get('/council', (req, res) => {
           <div id="feed">
             <div class="empty-state">
               <div class="icon">🏛️</div>
-              <p>The council chamber is ready.<br>8 agents await your prompt — 7 collaborate, then Jarvis decides.</p>
+              <p>The council chamber is ready.<br>8 agents await your prompt -- 7 collaborate, then Jarvis decides.</p>
               <div class="flow">
                 <span class="flow-step">♟️ Alpha</span>
                 <span class="flow-arrow">→</span>
@@ -938,7 +938,7 @@ app.get('/council', (req, res) => {
       function addPhaseDivider() {
         const div = document.createElement('div');
         div.className = 'phase-divider';
-        div.innerHTML = '<span>👑 Jarvis — Final Decision</span>';
+        div.innerHTML = '<span>👑 Jarvis -- Final Decision</span>';
         feed.appendChild(div);
         scrollToBottom();
       }
@@ -949,7 +949,7 @@ app.get('/council', (req, res) => {
         div.innerHTML =
           '<div class="jarvis-header">' +
             '<span class="crown">👑</span>' +
-            '<h3>Jarvis — Final Decision</h3>' +
+            '<h3>Jarvis -- Final Decision</h3>' +
             '<span class="jarvis-badge">Opus · Chief of Staff</span>' +
           '</div>' +
           '<div class="jarvis-body">' + formatMarkdown(text) + '</div>' +
@@ -1139,7 +1139,7 @@ app.post('/api/council', async (req, res) => {
     const rounds = history.map((round, i) => {
       let r = `--- Round ${i + 1} ---\nUser: "${round.prompt}"`;
       (round.responses || []).forEach(resp => {
-        r += `\n[${resp.name} — ${resp.role}]: ${resp.text}`;
+        r += `\n[${resp.name} -- ${resp.role}]: ${resp.text}`;
       });
       return r;
     }).join('\n\n');
@@ -1154,19 +1154,19 @@ app.post('/api/council', async (req, res) => {
       send({ type: 'thinking', agentId: agent.id });
 
       const systemContent = hasHistory
-        ? agent.system + `\n\nIMPORTANT: This is a follow-up round in an ongoing council discussion. The user has a new question based on the previous rounds. Build on prior insights — don't repeat what was already said. Address the new question directly.`
+        ? agent.system + `\n\nIMPORTANT: This is a follow-up round in an ongoing council discussion. The user has a new question based on the previous rounds. Build on prior insights -- don't repeat what was already said. Address the new question directly.`
         : agent.system;
 
       let userContent;
       if (hasHistory) {
         userContent = priorContext + `User follow-up: "${prompt.trim()}"`;
         if (conversationHistory.length > 0) {
-          userContent += `\n\nCouncil discussion this round so far:\n${conversationHistory.map(h => `[${h.name} — ${h.role}]: ${h.text}`).join('\n\n')}`;
+          userContent += `\n\nCouncil discussion this round so far:\n${conversationHistory.map(h => `[${h.name} -- ${h.role}]: ${h.text}`).join('\n\n')}`;
         }
       } else {
         userContent = conversationHistory.length === 0
           ? `User prompt: "${prompt.trim()}"`
-          : `User prompt: "${prompt.trim()}"\n\nCouncil discussion so far:\n${conversationHistory.map(h => `[${h.name} — ${h.role}]: ${h.text}`).join('\n\n')}`;
+          : `User prompt: "${prompt.trim()}"\n\nCouncil discussion so far:\n${conversationHistory.map(h => `[${h.name} -- ${h.role}]: ${h.text}`).join('\n\n')}`;
       }
 
       const messages = [
@@ -1195,9 +1195,9 @@ app.post('/api/council', async (req, res) => {
 
     let jarvisUserContent;
     if (hasHistory) {
-      jarvisUserContent = priorContext + `User follow-up: "${prompt.trim()}"\n\nFull council transcript this round:\n${conversationHistory.map(h => `[${h.name} — ${h.role}]: ${h.text}`).join('\n\n')}\n\nYou are Jarvis. Address this follow-up decisively.`;
+      jarvisUserContent = priorContext + `User follow-up: "${prompt.trim()}"\n\nFull council transcript this round:\n${conversationHistory.map(h => `[${h.name} -- ${h.role}]: ${h.text}`).join('\n\n')}\n\nYou are Jarvis. Address this follow-up decisively.`;
     } else {
-      jarvisUserContent = `Original prompt: "${prompt.trim()}"\n\nFull council transcript:\n${conversationHistory.map(h => `[${h.name} — ${h.role}]: ${h.text}`).join('\n\n')}\n\nYou are Jarvis. You've heard everyone. Now make the call.`;
+      jarvisUserContent = `Original prompt: "${prompt.trim()}"\n\nFull council transcript:\n${conversationHistory.map(h => `[${h.name} -- ${h.role}]: ${h.text}`).join('\n\n')}\n\nYou are Jarvis. You've heard everyone. Now make the call.`;
     }
 
     const jarvisMessages = [
@@ -1335,7 +1335,7 @@ app.get('/api/youtube/dashboard', async (req, res) => {
 app.get('/pipeline', (req, res) => {
   res.send(`<!DOCTYPE html><html lang="en"><head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pipeline — Mission Control</title>
+    <title>Pipeline -- Mission Control</title>
     ${NAV_STYLE}
     <style>
       .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
@@ -1428,7 +1428,7 @@ app.get('/pipeline', (req, res) => {
       <div class="page-header">
         <div>
           <h1>🔄 Pipeline</h1>
-          <p>Drag & drop tasks across stages — from idea to delivery</p>
+          <p>Drag & drop tasks across stages -- from idea to delivery</p>
         </div>
         <div class="header-actions">
           <input type="text" class="search-box" id="searchInput" placeholder="Search tasks..." oninput="filterTasks()" />
@@ -1660,7 +1660,7 @@ app.get('/pipeline', (req, res) => {
 app.get('/growth', (req, res) => {
   res.send(`<!DOCTYPE html><html lang="en"><head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Growth — Mission Control</title>
+    <title>Growth -- Mission Control</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>
     ${NAV_STYLE}
     <style>
@@ -1777,7 +1777,7 @@ app.get('/growth', (req, res) => {
     <div class="container">
       <div class="page-header" style="margin-bottom:1.5rem">
         <h1>📈 Growth Dashboard</h1>
-        <p>YouTube analytics — track subscribers, views, engagement & revenue</p>
+        <p>YouTube analytics -- track subscribers, views, engagement & revenue</p>
       </div>
 
       <div id="setupView">
@@ -1923,13 +1923,13 @@ app.get('/growth', (req, res) => {
         document.getElementById('revenueDisplay').innerHTML =
           '<div class="revenue-range">' +
             '<div class="rev-label">Estimated Lifetime</div>' +
-            '<div class="rev-value">$' + formatNum(parseInt(data.estimatedRevenue.low)) + ' — $' + formatNum(parseInt(data.estimatedRevenue.high)) + '</div>' +
-            '<div class="rev-sub">Based on $1–$5 CPM</div>' +
+            '<div class="rev-value">$' + formatNum(parseInt(data.estimatedRevenue.low)) + ' -- $' + formatNum(parseInt(data.estimatedRevenue.high)) + '</div>' +
+            '<div class="rev-sub">Based on $1-$5 CPM</div>' +
           '</div>' +
           '<div class="revenue-divider"></div>' +
           '<div class="revenue-range">' +
             '<div class="rev-label">Per 1K Views</div>' +
-            '<div class="rev-value">$1 — $5</div>' +
+            '<div class="rev-value">$1 -- $5</div>' +
             '<div class="rev-sub">Industry average CPM</div>' +
           '</div>';
 
@@ -2028,7 +2028,7 @@ app.get('/growth', (req, res) => {
 app.get('/content', (req, res) => {
   res.send(`<!DOCTYPE html><html lang="en"><head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Content — Mission Control</title>
+    <title>Content -- Mission Control</title>
     ${NAV_STYLE}
     <style>
       .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
@@ -2408,7 +2408,7 @@ app.get('/content', (req, res) => {
               '<span class="list-date">' + dateLabel + '</span>' +
             '</div></div>';
         });
-        if (!html) html = '<p style="color:#5a6a8a;text-align:center;padding:3rem">No content yet — click + New Content to get started</p>';
+        if (!html) html = '<p style="color:#5a6a8a;text-align:center;padding:3rem">No content yet -- click + New Content to get started</p>';
         document.getElementById('listView').innerHTML = html;
       }
 
@@ -2554,7 +2554,7 @@ app.get('/manifest.json', (req, res) => {
   res.json({
     name: 'Mission Control',
     short_name: 'Mission Ctrl',
-    description: 'AI-powered operations dashboard — 8-agent council led by Jarvis',
+    description: 'AI-powered operations dashboard -- 8-agent council led by Jarvis',
     start_url: '/',
     display: 'standalone',
     background_color: '#0a0e27',
@@ -2608,7 +2608,7 @@ self.addEventListener('fetch', event => {
       caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
       return response;
     }).catch(() => caches.match(event.request).then(r => r || new Response(
-      '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline — Mission Control</title><style>body{font-family:-apple-system,sans-serif;background:#0a0e27;color:#e0e0e0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center}h1{font-size:2rem;background:linear-gradient(135deg,#00d4ff,#7b2ff7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}p{color:#5a6a8a}</style></head><body><div><h1>📡 Offline</h1><p>Mission Control will reconnect when you are back online.</p></div></body></html>',
+      '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline -- Mission Control</title><style>body{font-family:-apple-system,sans-serif;background:#0a0e27;color:#e0e0e0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center}h1{font-size:2rem;background:linear-gradient(135deg,#00d4ff,#7b2ff7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}p{color:#5a6a8a}</style></head><body><div><h1>📡 Offline</h1><p>Mission Control will reconnect when you are back online.</p></div></body></html>',
       { headers: { 'Content-Type': 'text/html' } }
     )))
   );
@@ -2708,7 +2708,7 @@ app.post('/api/content/generate', async (req, res) => {
   const dateStr = (d) => d.toISOString().split('T')[0];
 
   const systemPrompt = `You are an expert content strategist. Generate a 30-day content calendar.
-Return ONLY valid JSON — no markdown, no code fences, no explanation. Return an array of objects with these exact keys:
+Return ONLY valid JSON -- no markdown, no code fences, no explanation. Return an array of objects with these exact keys:
 - title: compelling title
 - type: one of "linkedin", "youtube", "twitter", "short"
 - status: "idea"
@@ -2959,7 +2959,7 @@ app.post('/api/memory/add', (req, res) => {
 
     if (category === 'long-term') {
       // Append to MEMORY.md
-      const entry = '\n\n---\n\n## ' + hours + ':' + mins + ' — Added Memory\n\n' + content + '\n';
+      const entry = '\n\n---\n\n## ' + hours + ':' + mins + ' -- Added Memory\n\n' + content + '\n';
       if (!require('fs').existsSync(MEMORY_MD)) {
         require('fs').writeFileSync(MEMORY_MD, '# Long-Term Memory\n' + entry, 'utf-8');
       } else {
@@ -2970,7 +2970,7 @@ app.post('/api/memory/add', (req, res) => {
       // Append to today's daily file
       const dateStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
       const dailyFile = path.join(MEMORY_DIR, dateStr + '.md');
-      const entry = '\n## ' + hours + ':' + mins + ' — Memory\n\n' + content + '\n\n---\n';
+      const entry = '\n## ' + hours + ':' + mins + ' -- Memory\n\n' + content + '\n\n---\n';
 
       // Ensure memory dir exists
       if (!require('fs').existsSync(MEMORY_DIR)) {
@@ -3058,7 +3058,7 @@ app.get('/api/memory/search', (req, res) => {
 app.get('/memory', (req, res) => {
   res.send(`<!DOCTYPE html><html lang="en"><head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Second Brain — Mission Control</title>
+    <title>Second Brain -- Mission Control</title>
     ${NAV_STYLE}
     <style>
       /* Memory Layout */
@@ -3543,7 +3543,7 @@ app.get('/memory', (req, res) => {
             document.getElementById('docContent').innerHTML = '<div style="color:#ff4757;padding:1rem">Error: ' + escapeHtml(data.error) + '</div>';
             return;
           }
-          document.getElementById('docMeta').textContent = 'Modified: ' + new Date(data.modified).toLocaleString() + ' — ' + formatSize(data.size);
+          document.getElementById('docMeta').textContent = 'Modified: ' + new Date(data.modified).toLocaleString() + ' -- ' + formatSize(data.size);
           document.getElementById('docContent').innerHTML = renderMarkdown(data.content);
         }).catch(function(){
           document.getElementById('docContent').innerHTML = '<div style="color:#ff4757;padding:1rem">Failed to load file</div>';
@@ -3822,12 +3822,12 @@ function genContentId() {
   return 'c' + Date.now() + Math.random().toString(36).substr(2, 5);
 }
 
-// GET /api/content/items — Return all content items
+// GET /api/content/items -- Return all content items
 app.get('/api/content/items', (req, res) => {
   res.json(contentItems);
 });
 
-// POST /api/content/items — Add a new content item
+// POST /api/content/items -- Add a new content item
 app.post('/api/content/items', (req, res) => {
   const { title, type, status, date, notes, tags, url } = req.body;
   if (!title) {
@@ -3851,7 +3851,7 @@ app.post('/api/content/items', (req, res) => {
   res.status(201).json(newItem);
 });
 
-// PUT /api/content/items/:id — Update an existing item
+// PUT /api/content/items/:id -- Update an existing item
 app.put('/api/content/items/:id', (req, res) => {
   const idx = contentItems.findIndex(i => i.id === req.params.id);
   if (idx === -1) {
@@ -3869,7 +3869,7 @@ app.put('/api/content/items/:id', (req, res) => {
   res.json(contentItems[idx]);
 });
 
-// DELETE /api/content/items/:id — Delete an item
+// DELETE /api/content/items/:id -- Delete an item
 app.delete('/api/content/items/:id', (req, res) => {
   const idx = contentItems.findIndex(i => i.id === req.params.id);
   if (idx === -1) {
@@ -3881,7 +3881,7 @@ app.delete('/api/content/items/:id', (req, res) => {
   res.json({ success: true, deleted: removed });
 });
 
-// POST /api/content/items/bulk — Bulk import (merge, avoiding duplicate IDs)
+// POST /api/content/items/bulk -- Bulk import (merge, avoiding duplicate IDs)
 app.post('/api/content/items/bulk', (req, res) => {
   const incoming = req.body;
   if (!Array.isArray(incoming)) {
