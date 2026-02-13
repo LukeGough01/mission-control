@@ -6,14 +6,14 @@ const port = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// ─── API Clients ─────────────────────────────────────────────────────────────
+// --─ API Clients ------------------------------------------------------------─
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || '';
 const OPENAI_KEY = process.env.OPENAI_API_KEY || '';
 
 const anthropic = ANTHROPIC_KEY ? new Anthropic({ apiKey: ANTHROPIC_KEY }) : null;
 const openai = OPENAI_KEY ? new OpenAI({ apiKey: OPENAI_KEY }) : null;
 
-// ─── Model Assignments (Cost-Optimized) ──────────────────────────────────────
+// --─ Model Assignments (Cost-Optimized) --------------------------------------
 const MODELS = {
   OPUS:       'claude-opus-4-6',       // Jarvis only — premium synthesis
   SONNET_45:  'claude-sonnet-4-5-20250929',     // Alpha — strategic lead
@@ -22,7 +22,7 @@ const MODELS = {
   GPT4O:      'gpt-4o',                          // Beta, Epsilon — diversity of thought
 };
 
-// ─── Agent Definitions ───────────────────────────────────────────────────────
+// --─ Agent Definitions ------------------------------------------------------─
 const COUNCIL_AGENTS = [
   {
     id: 'alpha', name: 'Alpha', role: 'Strategist',
@@ -96,7 +96,7 @@ Be authoritative, decisive, and actionable. This is the council's final word. Yo
 
 const ALL_AGENTS = [...COUNCIL_AGENTS, JARVIS];
 
-// ─── LLM Call Helper ─────────────────────────────────────────────────────────
+// --─ LLM Call Helper --------------------------------------------------------─
 async function callLLM(agent, messages) {
   if (agent.provider === 'anthropic') {
     if (!anthropic) throw new Error('ANTHROPIC_API_KEY not configured.');
@@ -126,7 +126,7 @@ async function callLLM(agent, messages) {
   throw new Error(`Unknown provider: ${agent.provider}`);
 }
 
-// ─── Shared Styles ───────────────────────────────────────────────────────────
+// --─ Shared Styles ----------------------------------------------------------─
 const NAV_STYLE = `
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#0a0e27">
@@ -189,7 +189,7 @@ const NAV_HTML = `
   <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/service-worker.js').catch(function(){})}</script>
 `;
 
-// ─── Home Page ───────────────────────────────────────────────────────────────
+// --─ Home Page --------------------------------------------------------------─
 app.get('/', (req, res) => {
   res.send(`<!DOCTYPE html><html lang="en"><head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -275,7 +275,7 @@ app.get('/', (req, res) => {
     <script>
       document.getElementById('nav-home').classList.add('active');
 
-      // ── Market Dashboard ──
+      // -- Market Dashboard --
       var refreshSec = 60;
       function loadMarkets() {
         fetch('/api/market').then(function(r){return r.json()}).then(function(data){
@@ -315,7 +315,7 @@ app.get('/', (req, res) => {
         if(el)el.textContent=refreshSec>0?'Refresh in '+refreshSec+'s':'Refreshing...';
       },1000);
 
-      // ── PWA Install ──
+      // -- PWA Install --
       var deferredPrompt = null;
       window.addEventListener('beforeinstallprompt', function(e) {
         e.preventDefault();
@@ -341,7 +341,7 @@ app.get('/', (req, res) => {
   </body></html>`);
 });
 
-// ─── Council Page ────────────────────────────────────────────────────────────
+// --─ Council Page ------------------------------------------------------------
 app.get('/council', (req, res) => {
   const allAgentsJSON = JSON.stringify(ALL_AGENTS.map(a => ({
     id: a.id, name: a.name, role: a.role, color: a.color, icon: a.icon, modelLabel: a.modelLabel
@@ -352,7 +352,7 @@ app.get('/council', (req, res) => {
     <title>AI Council — Mission Control</title>
     ${NAV_STYLE}
     <style>
-      /* ── Layout ── */
+      /* -- Layout -- */
       .council-layout {
         display: flex; gap: 1.5rem; align-items: flex-start;
       }
@@ -365,7 +365,7 @@ app.get('/council', (req, res) => {
       }
       .page-header p { color: #5a6a8a; margin-top: 0.3rem; }
 
-      /* ── Agent Sidebar ── */
+      /* -- Agent Sidebar -- */
       .agent-sidebar {
         width: 260px; flex-shrink: 0;
         position: sticky; top: 80px;
@@ -509,7 +509,7 @@ app.get('/council', (req, res) => {
         box-shadow: 0 0 16px rgba(249, 202, 36, 0.3);
       }
 
-      /* ── Responsive ── */
+      /* -- Responsive -- */
       @media (max-width: 960px) {
         .council-layout { flex-direction: column-reverse; }
         .agent-sidebar {
@@ -524,9 +524,9 @@ app.get('/council', (req, res) => {
         .sidebar-divider { display: none; }
       }
 
-      /* ── Old Roster (removed — replaced by sidebar) ── */
+      /* -- Old Roster (removed — replaced by sidebar) -- */
 
-      /* ── Inline chip roster (kept for backward compat) ── */
+      /* -- Inline chip roster (kept for backward compat) -- */
       .agent-chip {
         display: flex; align-items: center; gap: 0.5rem;
         padding: 0.5rem 1rem; border-radius: 50px;
@@ -558,7 +558,7 @@ app.get('/council', (req, res) => {
         50% { box-shadow: 0 0 14px var(--agent-color); }
       }
 
-      /* ── Input Area ── */
+      /* -- Input Area -- */
       .input-area {
         display: flex; gap: 0.75rem; margin-bottom: 2rem;
       }
@@ -587,7 +587,7 @@ app.get('/council', (req, res) => {
       }
       .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
-      /* ── Chat Feed ── */
+      /* -- Chat Feed -- */
       .feed {
         display: flex; flex-direction: column; gap: 1rem;
         margin-bottom: 2rem;
@@ -633,13 +633,13 @@ app.get('/council', (req, res) => {
         to { opacity: 1; transform: translateY(0); }
       }
 
-      /* ── User message ── */
+      /* -- User message -- */
       .msg.user-msg {
         background: rgba(0, 212, 255, 0.06);
         border-left-color: #00d4ff;
       }
 
-      /* ── Jarvis Decision Card ── */
+      /* -- Jarvis Decision Card -- */
       .jarvis-card {
         background: linear-gradient(135deg, rgba(249, 202, 36, 0.06), rgba(249, 150, 36, 0.04));
         border: 1px solid rgba(249, 202, 36, 0.25);
@@ -678,7 +678,7 @@ app.get('/council', (req, res) => {
       }
       .jarvis-card .jarvis-body strong { color: #f0e6c0; }
 
-      /* ── Phase Divider ── */
+      /* -- Phase Divider -- */
       .phase-divider {
         display: flex; align-items: center; gap: 1rem;
         margin: 1.5rem 0;
@@ -694,7 +694,7 @@ app.get('/council', (req, res) => {
         white-space: nowrap;
       }
 
-      /* ── Typing Indicator ── */
+      /* -- Typing Indicator -- */
       .typing-indicator {
         display: flex; align-items: center; gap: 0.6rem;
         padding: 1rem 1.5rem;
@@ -723,7 +723,7 @@ app.get('/council', (req, res) => {
       }
       .typing-label { color: #5a6a8a; font-size: 0.82rem; }
 
-      /* ── Empty State ── */
+      /* -- Empty State -- */
       .empty-state {
         text-align: center; padding: 4rem 2rem;
         color: #3a4a6a;
@@ -748,7 +748,7 @@ app.get('/council', (req, res) => {
       }
       .empty-state .flow-arrow { color: #2a3a5a; font-size: 0.7rem; }
 
-      /* ── Error ── */
+      /* -- Error -- */
       .error-msg {
         background: rgba(255, 71, 87, 0.1);
         border: 1px solid rgba(255, 71, 87, 0.3);
@@ -757,7 +757,7 @@ app.get('/council', (req, res) => {
         animation: fadeSlide 0.3s ease-out;
       }
 
-      /* ── Session counter ── */
+      /* -- Session counter -- */
       .session-info {
         display: flex; justify-content: flex-end; margin-bottom: 0.5rem;
       }
@@ -1108,7 +1108,7 @@ app.get('/council', (req, res) => {
   </body></html>`);
 });
 
-// ─── Council API (SSE streaming) ─────────────────────────────────────────────
+// --─ Council API (SSE streaming) --------------------------------------------─
 app.post('/api/council', async (req, res) => {
   const { prompt, history } = req.body;
   if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
@@ -1147,7 +1147,7 @@ app.post('/api/council', async (req, res) => {
   const conversationHistory = [];
 
   try {
-    // ── Phase 1: Council Agents (Alpha → Eta) ──
+    // -- Phase 1: Council Agents (Alpha → Eta) --
     for (const agent of COUNCIL_AGENTS) {
       send({ type: 'thinking', agentId: agent.id });
 
@@ -1183,7 +1183,7 @@ app.post('/api/council', async (req, res) => {
       }
     }
 
-    // ── Phase 2: Jarvis Final Decision (Opus) ──
+    // -- Phase 2: Jarvis Final Decision (Opus) --
     send({ type: 'phase' });
     send({ type: 'thinking', agentId: 'jarvis' });
 
@@ -1215,10 +1215,10 @@ app.post('/api/council', async (req, res) => {
   res.end();
 });
 
-// ─── YouTube API Configuration ───────────────────────────────────────────────
+// --─ YouTube API Configuration ----------------------------------------------─
 const YT_API_KEY = process.env.YOUTUBE_API_KEY || 'AIzaSyBNe1tR9xOaVvZ8qH3X2wY1pQ4rS6tU7vW';
 
-// ─── YouTube API Proxy Endpoints ─────────────────────────────────────────────
+// --─ YouTube API Proxy Endpoints --------------------------------------------─
 app.get('/api/youtube/search', async (req, res) => {
   try {
     const q = req.query.q;
@@ -1329,7 +1329,7 @@ app.get('/api/youtube/dashboard', async (req, res) => {
   }
 });
 
-// ─── Pipeline Page (Kanban Board) ────────────────────────────────────────────
+// --─ Pipeline Page (Kanban Board) --------------------------------------------
 app.get('/pipeline', (req, res) => {
   res.send(`<!DOCTYPE html><html lang="en"><head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1654,7 +1654,7 @@ app.get('/pipeline', (req, res) => {
   </body></html>`);
 });
 
-// ─── Growth Page (YouTube Analytics Dashboard) ──────────────────────────────
+// --─ Growth Page (YouTube Analytics Dashboard) ------------------------------
 app.get('/growth', (req, res) => {
   res.send(`<!DOCTYPE html><html lang="en"><head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2022,7 +2022,7 @@ app.get('/growth', (req, res) => {
   </body></html>`);
 });
 
-// ─── Content Page (Content Calendar) ─────────────────────────────────────────
+// --─ Content Page (Content Calendar) ----------------------------------------─
 app.get('/content', (req, res) => {
   res.send(`<!DOCTYPE html><html lang="en"><head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2225,7 +2225,7 @@ app.get('/content', (req, res) => {
       function dateStr(y, m, d) { return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0'); }
       function genId() { return 'c' + Date.now() + Math.random().toString(36).substr(2, 5); }
 
-      // ── API-backed persistence ──
+      // -- API-backed persistence --
       function saveItems() {
         // Also cache locally for offline fallback
         localStorage.setItem('mc_content_items', JSON.stringify(items));
@@ -2546,7 +2546,7 @@ app.get('/content', (req, res) => {
   </body></html>`);
 });
 
-// ─── PWA: Manifest ───────────────────────────────────────────────────────────
+// --─ PWA: Manifest ----------------------------------------------------------─
 app.get('/manifest.json', (req, res) => {
   res.setHeader('Content-Type', 'application/manifest+json');
   res.json({
@@ -2573,7 +2573,7 @@ app.get('/manifest.json', (req, res) => {
   });
 });
 
-// ─── PWA: Service Worker ─────────────────────────────────────────────────────
+// --─ PWA: Service Worker ----------------------------------------------------─
 app.get('/service-worker.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
   res.send(`
@@ -2614,7 +2614,7 @@ self.addEventListener('fetch', event => {
 `);
 });
 
-// ─── PWA: Icon Generator ─────────────────────────────────────────────────────
+// --─ PWA: Icon Generator ----------------------------------------------------─
 app.get('/api/icon/:size', (req, res) => {
   const size = parseInt(req.params.size) || 192;
   // Generate a simple SVG icon and convert it to an inline SVG served as image
@@ -2638,7 +2638,7 @@ app.get('/api/icon/:size', (req, res) => {
   res.send(svg);
 });
 
-// ─── Market Data API ─────────────────────────────────────────────────────────
+// --─ Market Data API --------------------------------------------------------─
 app.get('/api/market', async (req, res) => {
   const tickers = [
     { symbol: 'TSLA', name: 'Tesla', icon: '⚡' },
@@ -2694,7 +2694,7 @@ app.get('/api/market', async (req, res) => {
   }
 });
 
-// ─── Content Auto-Generation API ─────────────────────────────────────────────
+// --─ Content Auto-Generation API --------------------------------------------─
 app.post('/api/content/generate', async (req, res) => {
   const { niche } = req.body;
 
@@ -2782,7 +2782,7 @@ Return ONLY the JSON array. No other text.`;
   }
 });
 
-// ─── Health Check ────────────────────────────────────────────────────────────
+// --─ Health Check ------------------------------------------------------------
 app.get('/health', (req, res) => res.json({
   status: 'ok',
   agents: ALL_AGENTS.length,
@@ -2801,7 +2801,7 @@ app.listen(port, () => {
 
 module.exports = app;
 
-// ─── Content Items Backend (JSON file-backed CRUD) ───────────────────────────
+// --─ Content Items Backend (JSON file-backed CRUD) --------------------------─
 const fs = require('fs');
 const path = require('path');
 const CONTENT_FILE = path.join(__dirname, 'content-items.json');
