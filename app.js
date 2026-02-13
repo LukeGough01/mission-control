@@ -2158,6 +2158,7 @@ app.get('/content', (req, res) => {
             <button id="viewCalBtn" class="active" onclick="setView('calendar')">📅 Calendar</button>
             <button id="viewListBtn" onclick="setView('list')">📋 List</button>
           </div>
+          <button class="btn btn-ghost" id="syncBtn" onclick="syncFromServer()" style="display:flex;align-items:center;gap:0.4rem">🔄 Sync</button>
           <button class="btn btn-ghost" id="autoGenBtn" onclick="autoGenerateContent()" style="display:flex;align-items:center;gap:0.4rem">🤖 Auto-Generate 30 Days</button>
           <button class="btn btn-primary" onclick="openContentModal()">+ New Content</button>
         </div>
@@ -2215,36 +2216,92 @@ app.get('/content', (req, res) => {
     </div>
 
     <script>
-      var items = JSON.parse(localStorage.getItem('mc_content_items') || '[]');
+      var items = [];
       var currentYear, currentMonth;
       var currentView = 'calendar';
       var draggedContentId = null;
-
-      // Seed demo data if empty
-      if (items.length === 0) {
-        var today = new Date();
-        var y = today.getFullYear(), m = today.getMonth();
-        items = [
-          { id: 'c1', title: 'Top 10 AI Tools for Creators', type: 'video', status: 'scripting', date: dateStr(y, m, 14), notes: 'Cover ChatGPT, Midjourney, Runway, ElevenLabs, etc.', tags: 'ai,tools,tutorial', created: Date.now() },
-          { id: 'c2', title: 'Quick Tip: Color Grading in 60s', type: 'short', status: 'idea', date: dateStr(y, m, 16), notes: '', tags: 'editing,short', created: Date.now() },
-          { id: 'c3', title: 'Monthly Q&A Livestream', type: 'livestream', status: 'scheduled', date: dateStr(y, m, 20), notes: 'Collect questions from community tab beforehand', tags: 'qa,community', created: Date.now() },
-          { id: 'c4', title: 'Behind the Scenes: Studio Tour', type: 'video', status: 'filming', date: dateStr(y, m, 22), notes: 'Show new setup, lighting, camera gear', tags: 'bts,studio', created: Date.now() },
-          { id: 'c5', title: 'Poll: Next tutorial topic?', type: 'community', status: 'published', date: dateStr(y, m, 10), notes: 'Options: Premiere Pro, DaVinci, CapCut', tags: 'poll', created: Date.now() },
-          { id: 'c6', title: 'YouTube Algorithm Deep Dive', type: 'video', status: 'idea', date: dateStr(y, m, 28), notes: 'Research latest algorithm changes, interview experts if possible', tags: 'youtube,algorithm,growth', created: Date.now() },
-        ];
-        saveItems();
-      }
+      var isLoading = true;
 
       function dateStr(y, m, d) { return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0'); }
-      function saveItems() { localStorage.setItem('mc_content_items', JSON.stringify(items)); }
       function genId() { return 'c' + Date.now() + Math.random().toString(36).substr(2, 5); }
 
-      // Init to current month
+      // ── API-backed persistence ──
+      function saveItems() {
+        // Also cache locally for offline fallback
+        localStorage.setItem('mc_content_items', JSON.stringify(items));
+      }
+
+      async function loadItemsFromAPI() {
+        try {
+          var resp = await fetch('/api/content/items');
+          if (resp.ok) {
+            var data = await resp.json();
+            if (Array.isArray(data) && data.length > 0) {
+              items = data;
+              saveItems(); // cache locally
+              return true;
+            }
+          }
+        } catch (e) {
+          console.warn('API fetch failed, using local cache:', e);
+        }
+        // Fallback to localStorage
+        items = JSON.parse(localStorage.getItem('mc_content_items') || '[]');
+        return false;
+      }
+
+      async function apiCreateItem(item) {
+        try {
+          var resp = await fetch('/api/content/items', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(item),
+          });
+          if (resp.ok) return await resp.json();
+        } catch (e) { console.warn('API create failed:', e); }
+        return null;
+      }
+
+      async function apiUpdateItem(id, data) {
+        try {
+          var resp = await fetch('/api/content/items/' + id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+          if (resp.ok) return await resp.json();
+        } catch (e) { console.warn('API update failed:', e); }
+        return null;
+      }
+
+      async function apiDeleteItem(id) {
+        try {
+          var resp = await fetch('/api/content/items/' + id, { method: 'DELETE' });
+          return resp.ok;
+        } catch (e) { console.warn('API delete failed:', e); return false; }
+      }
+
+      async function syncFromServer() {
+        var syncBtn = document.getElementById('syncBtn');
+        if (syncBtn) { syncBtn.textContent = '⏳ Syncing...'; syncBtn.disabled = true; }
+        var ok = await loadItemsFromAPI();
+        renderCalendar();
+        renderList();
+        if (syncBtn) { syncBtn.textContent = ok ? '✅ Synced' : '⚠️ Offline'; syncBtn.disabled = false; setTimeout(function(){ syncBtn.textContent = '🔄 Sync'; }, 2000); }
+      }
+
+      // Init to current month + load from API
       var now = new Date();
       currentYear = now.getFullYear();
       currentMonth = now.getMonth();
-      renderCalendar();
-      renderList();
+
+      // Load from API first, then render
+      (async function() {
+        await loadItemsFromAPI();
+        isLoading = false;
+        renderCalendar();
+        renderList();
+      })();
 
       function changeMonth(delta) {
         currentMonth += delta;
@@ -2369,7 +2426,7 @@ app.get('/content', (req, res) => {
         e.currentTarget.classList.remove('drag-over');
         if (!draggedContentId) return;
         var item = items.find(function(i) { return i.id === draggedContentId; });
-        if (item) { item.date = dateKey; saveItems(); renderCalendar(); renderList(); }
+        if (item) { item.date = dateKey; saveItems(); apiUpdateItem(item.id, { date: dateKey }); renderCalendar(); renderList(); }
       }
 
       function openContentModal(editId, preDate) {
@@ -2402,7 +2459,7 @@ app.get('/content', (req, res) => {
 
       function closeContentModal() { document.getElementById('contentModalOverlay').classList.remove('active'); }
 
-      function saveContent() {
+      async function saveContent() {
         var title = document.getElementById('contentTitle').value.trim();
         if (!title) return;
         var id = document.getElementById('contentId').value;
@@ -2415,12 +2472,16 @@ app.get('/content', (req, res) => {
           tags: document.getElementById('contentTags').value.trim(),
         };
         if (id) {
+          // Update existing
           var item = items.find(function(i) { return i.id === id; });
           if (item) Object.assign(item, data);
+          apiUpdateItem(id, data); // fire and forget
         } else {
+          // Create new
           data.id = genId();
           data.created = Date.now();
           items.push(data);
+          apiCreateItem(data); // fire and forget
         }
         saveItems();
         renderCalendar();
@@ -2428,11 +2489,12 @@ app.get('/content', (req, res) => {
         closeContentModal();
       }
 
-      function deleteContent() {
+      async function deleteContent() {
         var id = document.getElementById('contentId').value;
         if (id) {
           items = items.filter(function(i) { return i.id !== id; });
           saveItems();
+          apiDeleteItem(id); // fire and forget
           renderCalendar();
           renderList();
           closeContentModal();
@@ -2462,6 +2524,12 @@ app.get('/content', (req, res) => {
               items.push(item);
             });
             saveItems();
+            // Bulk push to backend
+            fetch('/api/content/items/bulk', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data.items.map(function(it) { return items.find(function(i) { return i.title === it.title; }) || it; }))
+            }).catch(function(){});
             renderCalendar();
             renderList();
             alert('✅ Generated ' + data.items.length + ' content ideas!');
@@ -2732,3 +2800,128 @@ app.listen(port, () => {
 });
 
 module.exports = app;
+
+// ─── Content Items Backend (JSON file-backed CRUD) ───────────────────────────
+const fs = require('fs');
+const path = require('path');
+const CONTENT_FILE = path.join(__dirname, 'content-items.json');
+
+// In-memory store, loaded from file on startup
+let contentItems = [];
+
+function loadContentItems() {
+  try {
+    if (fs.existsSync(CONTENT_FILE)) {
+      const raw = fs.readFileSync(CONTENT_FILE, 'utf-8');
+      contentItems = JSON.parse(raw);
+      if (!Array.isArray(contentItems)) contentItems = [];
+      console.log(`Loaded ${contentItems.length} content items from ${CONTENT_FILE}`);
+    } else {
+      contentItems = [];
+      saveContentItems();
+      console.log('Created empty content-items.json');
+    }
+  } catch (err) {
+    console.error('Failed to load content-items.json:', err.message);
+    contentItems = [];
+  }
+}
+
+function saveContentItems() {
+  try {
+    fs.writeFileSync(CONTENT_FILE, JSON.stringify(contentItems, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Failed to save content-items.json:', err.message);
+  }
+}
+
+// Load on startup
+loadContentItems();
+
+function genContentId() {
+  return 'c' + Date.now() + Math.random().toString(36).substr(2, 5);
+}
+
+// GET /api/content/items — Return all content items
+app.get('/api/content/items', (req, res) => {
+  res.json(contentItems);
+});
+
+// POST /api/content/items — Add a new content item
+app.post('/api/content/items', (req, res) => {
+  const { title, type, status, date, notes, tags, url } = req.body;
+  if (!title) {
+    return res.status(400).json({ error: 'title is required' });
+  }
+
+  const newItem = {
+    id: req.body.id || genContentId(),
+    title,
+    type: type || 'video',
+    status: status || 'idea',
+    date: date || new Date().toISOString().split('T')[0],
+    notes: notes || '',
+    tags: tags || '',
+    url: url || '',
+    created: req.body.created || Date.now(),
+  };
+
+  contentItems.push(newItem);
+  saveContentItems();
+  res.status(201).json(newItem);
+});
+
+// PUT /api/content/items/:id — Update an existing item
+app.put('/api/content/items/:id', (req, res) => {
+  const idx = contentItems.findIndex(i => i.id === req.params.id);
+  if (idx === -1) {
+    return res.status(404).json({ error: 'Item not found' });
+  }
+
+  const allowed = ['title', 'type', 'status', 'date', 'notes', 'tags', 'url'];
+  allowed.forEach(key => {
+    if (req.body[key] !== undefined) {
+      contentItems[idx][key] = req.body[key];
+    }
+  });
+
+  saveContentItems();
+  res.json(contentItems[idx]);
+});
+
+// DELETE /api/content/items/:id — Delete an item
+app.delete('/api/content/items/:id', (req, res) => {
+  const idx = contentItems.findIndex(i => i.id === req.params.id);
+  if (idx === -1) {
+    return res.status(404).json({ error: 'Item not found' });
+  }
+
+  const removed = contentItems.splice(idx, 1)[0];
+  saveContentItems();
+  res.json({ success: true, deleted: removed });
+});
+
+// POST /api/content/items/bulk — Bulk import (merge, avoiding duplicate IDs)
+app.post('/api/content/items/bulk', (req, res) => {
+  const incoming = req.body;
+  if (!Array.isArray(incoming)) {
+    return res.status(400).json({ error: 'Expected array of items' });
+  }
+
+  const existingIds = new Set(contentItems.map(i => i.id));
+  let added = 0;
+
+  incoming.forEach(item => {
+    if (!item.title) return;
+    if (!item.id) item.id = genContentId();
+    if (!existingIds.has(item.id)) {
+      item.created = item.created || Date.now();
+      contentItems.push(item);
+      existingIds.add(item.id);
+      added++;
+    }
+  });
+
+  saveContentItems();
+  res.json({ success: true, added, total: contentItems.length });
+});

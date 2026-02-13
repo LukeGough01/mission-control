@@ -1,0 +1,16 @@
+// Add these lines after line 2025 (before app.get('/content'))
+
+const ContentStore = require('./content-sync.js');
+const contentStore = new ContentStore();
+
+// API to get all content items
+app.get('/api/content/items', (req, res) => {
+  res.json({ items: contentStore.getAll() });
+});
+
+// API to add content item
+app.post('/api/content/items', express.json(), (req, res) => {
+  const item = contentStore.add(req.body);
+  res.json({ success: true, item });
+});
+

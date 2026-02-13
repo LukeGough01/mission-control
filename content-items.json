@@ -1,0 +1,73 @@
+[
+  {
+    "id": "c1770947881403849tf",
+    "title": "5 interview mistakes that KILL your chances",
+    "type": "community",
+    "status": "published",
+    "date": "2026-02-13",
+    "notes": "List format: 5 interview mistakes. Posted 11:53 AM AEST.",
+    "tags": "linkedin,interview,careeradvice",
+    "url": "https://www.linkedin.com/feed/update/urn:li:activity:7427892385709281280/",
+    "created": 1770947881403
+  },
+  {
+    "id": "c1",
+    "title": "Top 10 AI Tools for Creators",
+    "type": "video",
+    "status": "scripting",
+    "date": "2026-02-14",
+    "notes": "Cover ChatGPT, Midjourney, Runway, ElevenLabs, etc.",
+    "tags": "ai,tools,tutorial",
+    "created": 1770940000000
+  },
+  {
+    "id": "c2",
+    "title": "Quick Tip: Color Grading in 60s",
+    "type": "short",
+    "status": "idea",
+    "date": "2026-02-16",
+    "notes": "",
+    "tags": "editing,short",
+    "created": 1770940000001
+  },
+  {
+    "id": "c3",
+    "title": "Monthly Q&A Livestream",
+    "type": "livestream",
+    "status": "scheduled",
+    "date": "2026-02-20",
+    "notes": "Collect questions from community tab beforehand",
+    "tags": "qa,community",
+    "created": 1770940000002
+  },
+  {
+    "id": "c4",
+    "title": "Behind the Scenes: Studio Tour",
+    "type": "video",
+    "status": "filming",
+    "date": "2026-02-22",
+    "notes": "Show new setup, lighting, camera gear",
+    "tags": "bts,studio",
+    "created": 1770940000003
+  },
+  {
+    "id": "c5",
+    "title": "Poll: Next tutorial topic?",
+    "type": "community",
+    "status": "published",
+    "date": "2026-02-10",
+    "notes": "Options: Premiere Pro, DaVinci, CapCut",
+    "tags": "poll",
+    "created": 1770940000004
+  },
+  {
+    "id": "c6",
+    "title": "YouTube Algorithm Deep Dive",
+    "type": "video",
+    "status": "idea",
+    "date": "2026-02-28",
+    "notes": "Research latest algorithm changes, interview experts if possible",
+    "tags": "youtube,algorithm,growth",
+    "created": 1770940000005
+  }
+]
