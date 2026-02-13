@@ -185,6 +185,7 @@ const NAV_HTML = `
     <a href="/growth" id="nav-growth">Growth</a>
     <a href="/pipeline" id="nav-pipeline">Pipeline</a>
     <a href="/content" id="nav-content">Content</a>
+    <a href="/memory" id="nav-memory">Memory</a>
   </nav>
   <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/service-worker.js').catch(function(){})}</script>
 `;
@@ -270,6 +271,7 @@ app.get('/', (req, res) => {
         <a href="/growth" class="card"><div class="icon">📈</div><h2>Growth</h2><p>Track growth metrics, conversion funnels, and expansion opportunities.</p></a>
         <a href="/pipeline" class="card"><div class="icon">🔄</div><h2>Pipeline</h2><p>Manage your project pipeline from ideation to delivery.</p></a>
         <a href="/content" class="card"><div class="icon">✍️</div><h2>Content</h2><p>Content calendar, ideas engine, and publishing workflow.</p></a>
+        <a href="/memory" class="card"><div class="icon">🧠</div><h2>Second Brain</h2><p>Searchable memory vault — daily journals, long-term memory, and brain documents in one place.</p></a>
       </div>
     </div>
     <script>
@@ -2782,6 +2784,985 @@ Return ONLY the JSON array. No other text.`;
   }
 });
 
+// --─ Memory / Second Brain API -----------------------------------------------
+const fs = require('fs');
+const path = require('path');
+const WORKSPACE = process.env.WORKSPACE_PATH || '/home/luke/.openclaw/workspace';
+const MEMORY_DIR = path.join(WORKSPACE, 'memory');
+const BRAIN_DIR = path.join(WORKSPACE, 'brain');
+const MEMORY_MD = path.join(WORKSPACE, 'MEMORY.md');
+
+function getRelativeDate(dateStr) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const d = new Date(dateStr + 'T00:00:00');
+  const diffDays = Math.floor((today - d) / 86400000);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return diffDays + ' days ago';
+  if (diffDays < 14) return 'Last week';
+  if (diffDays < 30) return Math.floor(diffDays / 7) + ' weeks ago';
+  if (diffDays < 60) return 'Last month';
+  return Math.floor(diffDays / 30) + ' months ago';
+}
+
+function groupMemoryFiles(files) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const groups = { today: [], yesterday: [], thisWeek: [], thisMonth: [], older: {} };
+
+  files.forEach(f => {
+    if (!f.date) { return; }
+    const d = new Date(f.date + 'T00:00:00');
+    const diffDays = Math.floor((today - d) / 86400000);
+    if (diffDays === 0) groups.today.push(f);
+    else if (diffDays === 1) groups.yesterday.push(f);
+    else if (diffDays < 7) groups.thisWeek.push(f);
+    else if (diffDays < 30) groups.thisMonth.push(f);
+    else {
+      const monthKey = f.date.substring(0, 7); // YYYY-MM
+      if (!groups.older[monthKey]) groups.older[monthKey] = [];
+      groups.older[monthKey].push(f);
+    }
+  });
+  return groups;
+}
+
+// GET /api/memory/list
+app.get('/api/memory/list', (req, res) => {
+  try {
+    const results = [];
+
+    // Add MEMORY.md (long-term)
+    try {
+      const stat = require('fs').statSync(MEMORY_MD);
+      results.push({
+        filename: 'MEMORY.md',
+        type: 'long-term',
+        date: null,
+        size: stat.size,
+        modified: stat.mtime.toISOString(),
+        label: 'Long-Term Memory',
+      });
+    } catch(e) {}
+
+    // Add daily memory files
+    try {
+      const files = require('fs').readdirSync(MEMORY_DIR);
+      files.filter(f => /^\d{4}-\d{2}-\d{2}(-.+)?\.md$/.test(f)).sort().reverse().forEach(f => {
+        try {
+          const stat = require('fs').statSync(path.join(MEMORY_DIR, f));
+          const dateMatch = f.match(/^(\d{4}-\d{2}-\d{2})/);
+          results.push({
+            filename: f,
+            type: 'daily',
+            date: dateMatch ? dateMatch[1] : null,
+            size: stat.size,
+            modified: stat.mtime.toISOString(),
+            label: dateMatch ? dateMatch[1] : f,
+            relative: dateMatch ? getRelativeDate(dateMatch[1]) : null,
+          });
+        } catch(e) {}
+      });
+    } catch(e) {}
+
+    // Add brain documents
+    try {
+      function scanBrain(dir, prefix) {
+        const entries = require('fs').readdirSync(dir, { withFileTypes: true });
+        entries.forEach(entry => {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            scanBrain(fullPath, prefix + entry.name + '/');
+          } else if (entry.name.endsWith('.md')) {
+            try {
+              const stat = require('fs').statSync(fullPath);
+              results.push({
+                filename: 'brain/' + prefix + entry.name,
+                type: 'brain',
+                date: null,
+                size: stat.size,
+                modified: stat.mtime.toISOString(),
+                label: entry.name.replace('.md', ''),
+                category: prefix.replace(/\/$/, '') || 'root',
+              });
+            } catch(e) {}
+          }
+        });
+      }
+      scanBrain(BRAIN_DIR, '');
+    } catch(e) {}
+
+    const dailyFiles = results.filter(r => r.type === 'daily');
+    const groups = groupMemoryFiles(dailyFiles);
+
+    res.json({
+      total: results.length,
+      files: results,
+      groups,
+      brainCategories: [...new Set(results.filter(r => r.type === 'brain').map(r => r.category))],
+    });
+  } catch(err) {
+    res.status(500).json({ error: 'Failed to list memory files: ' + err.message });
+  }
+});
+
+// GET /api/memory/read/:filename
+app.get('/api/memory/read/:filename(*)', (req, res) => {
+  try {
+    let filePath;
+    const fn = req.params.filename;
+
+    if (fn === 'MEMORY.md') {
+      filePath = MEMORY_MD;
+    } else if (fn.startsWith('brain/')) {
+      filePath = path.join(BRAIN_DIR, fn.replace('brain/', ''));
+    } else {
+      filePath = path.join(MEMORY_DIR, fn);
+    }
+
+    // Security: prevent path traversal
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(path.resolve(WORKSPACE))) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    if (!require('fs').existsSync(resolved)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    const content = require('fs').readFileSync(resolved, 'utf-8');
+    const stat = require('fs').statSync(resolved);
+
+    res.json({
+      filename: fn,
+      content,
+      size: stat.size,
+      modified: stat.mtime.toISOString(),
+    });
+  } catch(err) {
+    res.status(500).json({ error: 'Failed to read memory file: ' + err.message });
+  }
+});
+
+// POST /api/memory/add
+app.post('/api/memory/add', (req, res) => {
+  try {
+    const { content, category } = req.body;
+    if (!content) {
+      return res.status(400).json({ error: 'content is required' });
+    }
+
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const mins = String(now.getMinutes()).padStart(2, '0');
+
+    if (category === 'long-term') {
+      // Append to MEMORY.md
+      const entry = '\n\n---\n\n## ' + hours + ':' + mins + ' — Added Memory\n\n' + content + '\n';
+      if (!require('fs').existsSync(MEMORY_MD)) {
+        require('fs').writeFileSync(MEMORY_MD, '# Long-Term Memory\n' + entry, 'utf-8');
+      } else {
+        require('fs').appendFileSync(MEMORY_MD, entry, 'utf-8');
+      }
+      res.json({ success: true, saved: 'MEMORY.md', timestamp: hours + ':' + mins });
+    } else {
+      // Append to today's daily file
+      const dateStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+      const dailyFile = path.join(MEMORY_DIR, dateStr + '.md');
+      const entry = '\n## ' + hours + ':' + mins + ' — Memory\n\n' + content + '\n\n---\n';
+
+      // Ensure memory dir exists
+      if (!require('fs').existsSync(MEMORY_DIR)) {
+        require('fs').mkdirSync(MEMORY_DIR, { recursive: true });
+      }
+
+      if (!require('fs').existsSync(dailyFile)) {
+        require('fs').writeFileSync(dailyFile, '# ' + dateStr + ' Daily Log\n' + entry, 'utf-8');
+      } else {
+        require('fs').appendFileSync(dailyFile, entry, 'utf-8');
+      }
+      res.json({ success: true, saved: dateStr + '.md', timestamp: hours + ':' + mins });
+    }
+  } catch(err) {
+    res.status(500).json({ error: 'Failed to add memory: ' + err.message });
+  }
+});
+
+// GET /api/memory/search?q=keyword
+app.get('/api/memory/search', (req, res) => {
+  try {
+    const query = (req.query.q || '').toLowerCase().trim();
+    if (!query) {
+      return res.status(400).json({ error: 'q parameter is required' });
+    }
+
+    const results = [];
+
+    function searchFile(filePath, filename, type) {
+      try {
+        const content = require('fs').readFileSync(filePath, 'utf-8');
+        const lines = content.split('\n');
+        lines.forEach((line, idx) => {
+          if (line.toLowerCase().includes(query)) {
+            const contextStart = Math.max(0, idx - 1);
+            const contextEnd = Math.min(lines.length, idx + 2);
+            results.push({
+              filename,
+              type,
+              line: idx + 1,
+              text: line.trim(),
+              context: lines.slice(contextStart, contextEnd).join('\n'),
+            });
+          }
+        });
+      } catch(e) {}
+    }
+
+    // Search MEMORY.md
+    searchFile(MEMORY_MD, 'MEMORY.md', 'long-term');
+
+    // Search daily files
+    try {
+      require('fs').readdirSync(MEMORY_DIR).filter(f => f.endsWith('.md')).forEach(f => {
+        searchFile(path.join(MEMORY_DIR, f), f, 'daily');
+      });
+    } catch(e) {}
+
+    // Search brain files
+    function searchBrain(dir, prefix) {
+      try {
+        require('fs').readdirSync(dir, { withFileTypes: true }).forEach(entry => {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            searchBrain(fullPath, prefix + entry.name + '/');
+          } else if (entry.name.endsWith('.md')) {
+            searchFile(fullPath, 'brain/' + prefix + entry.name, 'brain');
+          }
+        });
+      } catch(e) {}
+    }
+    searchBrain(BRAIN_DIR, '');
+
+    res.json({
+      query,
+      total: results.length,
+      results: results.slice(0, 100), // cap at 100 results
+    });
+  } catch(err) {
+    res.status(500).json({ error: 'Search failed: ' + err.message });
+  }
+});
+
+// --─ Memory Page (Second Brain UI) ------------------------------------------─
+app.get('/memory', (req, res) => {
+  res.send(`<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Second Brain — Mission Control</title>
+    ${NAV_STYLE}
+    <style>
+      /* Memory Layout */
+      .memory-layout {
+        display: grid;
+        grid-template-columns: 280px 1fr 260px;
+        gap: 1.5rem;
+        min-height: calc(100vh - 80px);
+        padding: 1.5rem 2rem;
+        max-width: 1600px;
+        margin: 0 auto;
+      }
+      @media (max-width: 1100px) {
+        .memory-layout { grid-template-columns: 240px 1fr; }
+        .memory-right { display: none; }
+      }
+      @media (max-width: 768px) {
+        .memory-layout { grid-template-columns: 1fr; }
+        .memory-sidebar { display: none; }
+        .mobile-toggle { display: flex !important; }
+      }
+
+      /* Sidebar */
+      .memory-sidebar {
+        background: rgba(12, 16, 38, 0.65);
+        backdrop-filter: blur(24px);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 16px;
+        padding: 1.25rem;
+        overflow-y: auto;
+        max-height: calc(100vh - 110px);
+        position: sticky; top: 80px;
+      }
+      .sidebar-title {
+        font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 1.5px; color: #3a4a6a; margin-bottom: 0.75rem;
+        padding: 0 0.5rem;
+      }
+      .memory-item {
+        display: flex; align-items: center; gap: 0.6rem;
+        padding: 0.55rem 0.75rem; border-radius: 10px;
+        cursor: pointer; transition: all 0.2s;
+        font-size: 0.82rem; color: #7a8aaa;
+        margin-bottom: 2px;
+      }
+      .memory-item:hover { background: rgba(255,255,255,0.04); color: #b0c4de; }
+      .memory-item.active { background: rgba(0, 212, 255, 0.1); color: #00d4ff; }
+      .memory-item .icon { font-size: 0.9rem; flex-shrink: 0; width: 20px; text-align: center; }
+      .memory-item .label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .memory-item .meta { font-size: 0.65rem; color: #3a4a6a; flex-shrink: 0; }
+
+      .memory-item.long-term { color: #f9ca24; }
+      .memory-item.long-term:hover { background: rgba(249, 202, 36, 0.08); }
+      .memory-item.long-term.active { background: rgba(249, 202, 36, 0.15); color: #f9ca24; }
+
+      .memory-item.brain-item { color: #a29bfe; }
+      .memory-item.brain-item:hover { background: rgba(162, 155, 254, 0.08); }
+      .memory-item.brain-item.active { background: rgba(162, 155, 254, 0.12); color: #a29bfe; }
+
+      .group-header {
+        font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 1px; color: #2a3a5a; margin: 0.75rem 0 0.35rem 0.5rem;
+        display: flex; align-items: center; gap: 0.5rem; cursor: pointer;
+        user-select: none;
+      }
+      .group-header:hover { color: #4a5a7a; }
+      .group-header .chevron {
+        font-size: 0.55rem; transition: transform 0.2s;
+        display: inline-block;
+      }
+      .group-header.collapsed .chevron { transform: rotate(-90deg); }
+      .group-content { overflow: hidden; transition: max-height 0.3s ease; }
+      .group-content.collapsed { max-height: 0 !important; overflow: hidden; }
+
+      .sidebar-divider {
+        height: 1px; background: rgba(255,255,255,0.04);
+        margin: 0.75rem 0;
+      }
+
+      /* Main Content Panel */
+      .memory-main {
+        background: rgba(12, 16, 38, 0.45);
+        backdrop-filter: blur(24px);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 16px;
+        padding: 2rem;
+        overflow-y: auto;
+        max-height: calc(100vh - 110px);
+        position: relative;
+      }
+      .memory-main .doc-header {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 1.5rem; padding-bottom: 1rem;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+      .doc-title {
+        font-size: 1.4rem; font-weight: 700; color: #c0d0e8;
+        display: flex; align-items: center; gap: 0.75rem;
+      }
+      .doc-title .type-badge {
+        font-size: 0.6rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.5px; padding: 0.2rem 0.6rem; border-radius: 50px;
+      }
+      .badge-daily { background: rgba(0, 212, 255, 0.15); color: #00d4ff; }
+      .badge-long-term { background: rgba(249, 202, 36, 0.15); color: #f9ca24; }
+      .badge-brain { background: rgba(162, 155, 254, 0.15); color: #a29bfe; }
+
+      .doc-meta { font-size: 0.75rem; color: #4a5a7a; }
+
+      /* Markdown Rendering */
+      .md-content { line-height: 1.75; color: #b0c4de; animation: fadeInContent 0.3s ease; }
+      .md-content h1 { font-size: 1.6rem; font-weight: 800; color: #e0e8f0; margin: 1.5rem 0 0.75rem 0; background: linear-gradient(135deg, #00d4ff, #7b2ff7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+      .md-content h2 { font-size: 1.2rem; font-weight: 700; color: #c0d0e8; margin: 1.25rem 0 0.5rem 0; padding-bottom: 0.4rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+      .md-content h3 { font-size: 1rem; font-weight: 600; color: #a0b8d0; margin: 1rem 0 0.4rem 0; }
+      .md-content p { margin: 0.5rem 0; }
+      .md-content ul, .md-content ol { padding-left: 1.5rem; margin: 0.5rem 0; }
+      .md-content li { margin: 0.25rem 0; }
+      .md-content strong { color: #d0e0f0; font-weight: 700; }
+      .md-content em { color: #8b9dc3; font-style: italic; }
+      .md-content code { background: rgba(0, 212, 255, 0.08); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; font-family: 'JetBrains Mono', monospace; color: #00d4ff; }
+      .md-content pre { background: rgba(8, 10, 25, 0.8); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 1rem; overflow-x: auto; margin: 0.75rem 0; }
+      .md-content pre code { background: none; padding: 0; color: #b0c4de; }
+      .md-content blockquote { border-left: 3px solid rgba(0, 212, 255, 0.4); padding-left: 1rem; margin: 0.75rem 0; color: #7a8aaa; font-style: italic; }
+      .md-content hr { border: none; border-top: 1px solid rgba(255,255,255,0.06); margin: 1.25rem 0; }
+      .md-content a { color: #00d4ff; text-decoration: none; }
+      .md-content a:hover { text-decoration: underline; }
+      .md-content table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+      .md-content th, .md-content td { padding: 0.5rem 0.75rem; border: 1px solid rgba(255,255,255,0.08); text-align: left; }
+      .md-content th { background: rgba(255,255,255,0.04); font-weight: 600; color: #c0d0e8; }
+
+      @keyframes fadeInContent { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+      /* Empty State */
+      .empty-state {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        height: 60%; text-align: center; color: #3a4a6a;
+      }
+      .empty-state .big-icon { font-size: 4rem; margin-bottom: 1rem; opacity: 0.5; }
+      .empty-state h2 { font-size: 1.3rem; font-weight: 700; color: #5a6a8a; margin-bottom: 0.5rem; }
+      .empty-state p { font-size: 0.85rem; max-width: 320px; line-height: 1.6; }
+
+      /* Right Panel */
+      .memory-right {
+        display: flex; flex-direction: column; gap: 1rem;
+        position: sticky; top: 80px;
+        max-height: calc(100vh - 110px);
+      }
+      .right-card {
+        background: rgba(12, 16, 38, 0.65);
+        backdrop-filter: blur(24px);
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 16px;
+        padding: 1.25rem;
+      }
+      .right-card h3 {
+        font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 1.5px; color: #3a4a6a; margin-bottom: 0.75rem;
+      }
+
+      /* Search */
+      .search-box {
+        width: 100%; padding: 0.6rem 0.85rem 0.6rem 2.2rem;
+        background: rgba(8, 10, 25, 0.6);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px; color: #c0d0e8;
+        font-size: 0.82rem; font-family: inherit;
+        outline: none; transition: all 0.3s;
+      }
+      .search-box:focus { border-color: rgba(0, 212, 255, 0.3); box-shadow: 0 0 20px rgba(0, 212, 255, 0.05); }
+      .search-box::placeholder { color: #3a4a6a; }
+      .search-wrapper { position: relative; }
+      .search-icon { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); font-size: 0.8rem; color: #3a4a6a; pointer-events: none; }
+
+      .search-results { margin-top: 0.5rem; }
+      .search-result {
+        padding: 0.6rem 0.75rem; border-radius: 8px;
+        cursor: pointer; transition: all 0.2s;
+        margin-bottom: 4px; border-left: 3px solid transparent;
+      }
+      .search-result:hover { background: rgba(255,255,255,0.04); }
+      .search-result .sr-file { font-size: 0.7rem; color: #5a6a8a; font-weight: 600; }
+      .search-result .sr-text { font-size: 0.78rem; color: #8b9dc3; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .search-result .sr-text mark { background: rgba(249, 202, 36, 0.3); color: #f9ca24; padding: 0 2px; border-radius: 2px; }
+      .search-result.sr-daily { border-left-color: #00d4ff; }
+      .search-result.sr-long-term { border-left-color: #f9ca24; }
+      .search-result.sr-brain { border-left-color: #a29bfe; }
+
+      /* Add Memory */
+      .add-memory-btn {
+        width: 100%; padding: 0.7rem;
+        background: linear-gradient(135deg, #00d4ff 0%, #7b2ff7 100%);
+        color: white; border: none; border-radius: 10px;
+        font-weight: 600; font-size: 0.82rem; font-family: inherit;
+        cursor: pointer; transition: all 0.3s;
+        display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+      }
+      .add-memory-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3); }
+
+      .add-form { display: none; margin-top: 0.75rem; }
+      .add-form.active { display: block; }
+      .add-textarea {
+        width: 100%; min-height: 80px; padding: 0.7rem;
+        background: rgba(8, 10, 25, 0.6);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px; color: #c0d0e8;
+        font-size: 0.82rem; font-family: inherit;
+        outline: none; resize: vertical; transition: border-color 0.3s;
+      }
+      .add-textarea:focus { border-color: rgba(0, 212, 255, 0.3); }
+      .add-actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+      .add-actions select {
+        flex: 1; padding: 0.5rem; background: rgba(8, 10, 25, 0.6);
+        border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+        color: #c0d0e8; font-size: 0.78rem; font-family: inherit;
+        outline: none;
+      }
+      .add-actions button {
+        padding: 0.5rem 1rem; border-radius: 8px; border: none;
+        font-weight: 600; font-size: 0.78rem; cursor: pointer;
+        font-family: inherit; transition: all 0.2s;
+      }
+      .btn-save { background: rgba(46, 213, 115, 0.2); color: #2ed573; }
+      .btn-save:hover { background: rgba(46, 213, 115, 0.3); }
+      .btn-cancel { background: rgba(255,255,255,0.05); color: #5a6a8a; }
+      .btn-cancel:hover { background: rgba(255,255,255,0.08); }
+
+      /* Stats */
+      .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0; }
+      .stat-label { font-size: 0.78rem; color: #5a6a8a; }
+      .stat-value { font-size: 0.82rem; font-weight: 600; color: #c0d0e8; }
+
+      /* Mobile toggle */
+      .mobile-toggle {
+        display: none; position: fixed; bottom: 1.5rem; right: 1.5rem;
+        width: 48px; height: 48px; border-radius: 50%;
+        background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+        border: none; color: white; font-size: 1.3rem;
+        cursor: pointer; z-index: 90; box-shadow: 0 4px 20px rgba(0,212,255,0.3);
+        align-items: center; justify-content: center;
+      }
+
+      /* Loading spinner */
+      .loading-spinner {
+        display: flex; align-items: center; justify-content: center;
+        height: 200px; color: #3a4a6a;
+      }
+      .loading-spinner::after {
+        content: ''; width: 32px; height: 32px; border: 3px solid rgba(0,212,255,0.2);
+        border-top-color: #00d4ff; border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* Toast */
+      .toast {
+        position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(100px);
+        background: rgba(12, 16, 38, 0.95); backdrop-filter: blur(20px);
+        border: 1px solid rgba(46, 213, 115, 0.3);
+        color: #2ed573; padding: 0.75rem 1.5rem; border-radius: 12px;
+        font-size: 0.85rem; font-weight: 600; z-index: 200;
+        transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        pointer-events: none;
+      }
+      .toast.show { transform: translateX(-50%) translateY(0); }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  </head><body>
+    ${NAV_HTML}
+
+    <div class="memory-layout">
+      <!-- Left Sidebar: File List -->
+      <div class="memory-sidebar" id="memorySidebar">
+        <div class="sidebar-title">🧠 Second Brain</div>
+        <div id="sidebarContent"><div class="loading-spinner"></div></div>
+      </div>
+
+      <!-- Center: Document Viewer -->
+      <div class="memory-main" id="memoryMain">
+        <div class="empty-state" id="emptyState">
+          <div class="big-icon">🧠</div>
+          <h2>Second Brain</h2>
+          <p>Select a memory from the sidebar, or search across all your notes and journals.</p>
+        </div>
+        <div id="docView" style="display:none">
+          <div class="doc-header">
+            <div>
+              <div class="doc-title" id="docTitle"></div>
+              <div class="doc-meta" id="docMeta"></div>
+            </div>
+          </div>
+          <div class="md-content" id="docContent"></div>
+        </div>
+      </div>
+
+      <!-- Right Panel: Actions -->
+      <div class="memory-right">
+        <div class="right-card">
+          <h3>✨ Quick Add</h3>
+          <button class="add-memory-btn" onclick="toggleAddForm()">
+            <span>+</span> Add Memory
+          </button>
+          <div class="add-form" id="addForm">
+            <textarea class="add-textarea" id="addContent" placeholder="What do you want to remember?"></textarea>
+            <div class="add-actions">
+              <select id="addCategory">
+                <option value="daily">📅 Today's Journal</option>
+                <option value="long-term">⭐ Long-Term</option>
+              </select>
+              <button class="btn-save" onclick="saveMemory()">Save</button>
+              <button class="btn-cancel" onclick="toggleAddForm()">Cancel</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="right-card">
+          <h3>🔍 Search</h3>
+          <div class="search-wrapper">
+            <span class="search-icon">🔎</span>
+            <input type="text" class="search-box" id="searchBox" placeholder="Search all memories..." oninput="debounceSearch()">
+          </div>
+          <div class="search-results" id="searchResults"></div>
+        </div>
+
+        <div class="right-card" id="statsCard">
+          <h3>📊 Stats</h3>
+          <div id="statsContent"></div>
+        </div>
+      </div>
+    </div>
+
+    <button class="mobile-toggle" onclick="document.getElementById('memorySidebar').classList.toggle('mobile-show')">☰</button>
+    <div class="toast" id="toast"></div>
+
+    <script>
+      document.getElementById('nav-memory').classList.add('active');
+
+      var currentFile = null;
+      var memoryData = null;
+      var searchTimer = null;
+
+      // -- Load sidebar --
+      function loadSidebar() {
+        fetch('/api/memory/list').then(function(r){return r.json()}).then(function(data){
+          memoryData = data;
+          renderSidebar(data);
+          renderStats(data);
+        }).catch(function(err){
+          document.getElementById('sidebarContent').innerHTML = '<div style="color:#ff4757;padding:1rem;font-size:0.82rem">Failed to load memories</div>';
+        });
+      }
+
+      function renderSidebar(data) {
+        var html = '';
+
+        // Long-Term Memory
+        var ltm = data.files.find(function(f){return f.filename === 'MEMORY.md'});
+        if (ltm) {
+          html += '<div class="memory-item long-term" onclick="loadFile(\\'MEMORY.md\\')" data-file="MEMORY.md">';
+          html += '<span class="icon">⭐</span><span class="label">Long-Term Memory</span>';
+          html += '<span class="meta">' + formatSize(ltm.size) + '</span></div>';
+          html += '<div class="sidebar-divider"></div>';
+        }
+
+        // Today
+        if (data.groups.today.length) {
+          html += '<div class="sidebar-title" style="margin-top:0">📅 Today</div>';
+          data.groups.today.forEach(function(f){
+            html += renderSidebarItem(f);
+          });
+        }
+
+        // Yesterday
+        if (data.groups.yesterday.length) {
+          html += '<div class="group-header" onclick="toggleGroup(this)"><span class="chevron">▼</span> Yesterday</div>';
+          html += '<div class="group-content">';
+          data.groups.yesterday.forEach(function(f){ html += renderSidebarItem(f); });
+          html += '</div>';
+        }
+
+        // This Week
+        if (data.groups.thisWeek.length) {
+          html += '<div class="group-header" onclick="toggleGroup(this)"><span class="chevron">▼</span> This Week</div>';
+          html += '<div class="group-content">';
+          data.groups.thisWeek.forEach(function(f){ html += renderSidebarItem(f); });
+          html += '</div>';
+        }
+
+        // This Month
+        if (data.groups.thisMonth.length) {
+          html += '<div class="group-header collapsed" onclick="toggleGroup(this)"><span class="chevron">▼</span> This Month</div>';
+          html += '<div class="group-content collapsed">';
+          data.groups.thisMonth.forEach(function(f){ html += renderSidebarItem(f); });
+          html += '</div>';
+        }
+
+        // Older months
+        var olderKeys = Object.keys(data.groups.older).sort().reverse();
+        olderKeys.forEach(function(monthKey) {
+          var monthLabel = formatMonthKey(monthKey);
+          html += '<div class="group-header collapsed" onclick="toggleGroup(this)"><span class="chevron">▼</span> ' + monthLabel + '</div>';
+          html += '<div class="group-content collapsed">';
+          data.groups.older[monthKey].forEach(function(f){ html += renderSidebarItem(f); });
+          html += '</div>';
+        });
+
+        // Brain documents
+        var brainFiles = data.files.filter(function(f){return f.type === 'brain'});
+        if (brainFiles.length) {
+          html += '<div class="sidebar-divider"></div>';
+          html += '<div class="sidebar-title">🧬 Brain Docs</div>';
+
+          var categories = {};
+          brainFiles.forEach(function(f){
+            var cat = f.category || 'root';
+            if (!categories[cat]) categories[cat] = [];
+            categories[cat].push(f);
+          });
+
+          Object.keys(categories).sort().forEach(function(cat) {
+            if (cat !== 'root') {
+              html += '<div class="group-header collapsed" onclick="toggleGroup(this)"><span class="chevron">▼</span> ' + cat + '</div>';
+              html += '<div class="group-content collapsed">';
+            }
+            categories[cat].forEach(function(f){
+              html += '<div class="memory-item brain-item" onclick="loadFile(\\'' + escapeJs(f.filename) + '\\')" data-file="' + escapeHtml(f.filename) + '">';
+              html += '<span class="icon">📄</span><span class="label">' + escapeHtml(f.label) + '</span>';
+              html += '<span class="meta">' + formatSize(f.size) + '</span></div>';
+            });
+            if (cat !== 'root') {
+              html += '</div>';
+            }
+          });
+        }
+
+        document.getElementById('sidebarContent').innerHTML = html;
+
+        // Auto-select today if available
+        if (data.groups.today.length && !currentFile) {
+          loadFile(data.groups.today[0].filename);
+        }
+      }
+
+      function renderSidebarItem(f) {
+        return '<div class="memory-item" onclick="loadFile(\\'' + escapeJs(f.filename) + '\\')" data-file="' + escapeHtml(f.filename) + '">' +
+          '<span class="icon">📝</span>' +
+          '<span class="label">' + escapeHtml(f.date || f.filename) + '</span>' +
+          '<span class="meta">' + (f.relative || '') + '</span></div>';
+      }
+
+      // -- Load file --
+      function loadFile(filename) {
+        currentFile = filename;
+
+        // Update active state
+        document.querySelectorAll('.memory-item').forEach(function(el){
+          el.classList.toggle('active', el.getAttribute('data-file') === filename);
+        });
+
+        document.getElementById('emptyState').style.display = 'none';
+        document.getElementById('docView').style.display = 'block';
+        document.getElementById('docContent').innerHTML = '<div class="loading-spinner"></div>';
+
+        // Set title
+        var titleText = filename;
+        var badgeClass = 'badge-daily';
+        var badgeText = 'Daily';
+        if (filename === 'MEMORY.md') {
+          titleText = '⭐ Long-Term Memory';
+          badgeClass = 'badge-long-term';
+          badgeText = 'Long-Term';
+        } else if (filename.startsWith('brain/')) {
+          titleText = '🧬 ' + filename.replace('brain/', '').replace('.md', '');
+          badgeClass = 'badge-brain';
+          badgeText = 'Brain';
+        } else {
+          titleText = '📝 ' + filename.replace('.md', '');
+        }
+        document.getElementById('docTitle').innerHTML = escapeHtml(titleText) + ' <span class="type-badge ' + badgeClass + '">' + badgeText + '</span>';
+
+        fetch('/api/memory/read/' + encodeURIComponent(filename)).then(function(r){return r.json()}).then(function(data){
+          if (data.error) {
+            document.getElementById('docContent').innerHTML = '<div style="color:#ff4757;padding:1rem">Error: ' + escapeHtml(data.error) + '</div>';
+            return;
+          }
+          document.getElementById('docMeta').textContent = 'Modified: ' + new Date(data.modified).toLocaleString() + ' — ' + formatSize(data.size);
+          document.getElementById('docContent').innerHTML = renderMarkdown(data.content);
+        }).catch(function(){
+          document.getElementById('docContent').innerHTML = '<div style="color:#ff4757;padding:1rem">Failed to load file</div>';
+        });
+      }
+
+      // -- Simple Markdown Renderer --
+      function renderMarkdown(text) {
+        if (!text) return '<p style="color:#5a6a8a">Empty file</p>';
+
+        // Escape HTML first
+        var html = text
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+
+        // Code blocks
+        var BT = String.fromCharCode(96);
+        var cbRegex = new RegExp(BT+BT+BT+'(\\\\w*)?\\\\n([\\\\s\\\\S]*?)'+BT+BT+BT, 'g');
+        html = html.replace(cbRegex, function(m, lang, code) {
+          return '<pre><code class="lang-' + (lang||'') + '">' + code.trim() + '</code></pre>';
+        });
+
+        // Inline code
+        var icRegex = new RegExp(BT+'([^'+BT+']+)'+BT, 'g');
+        html = html.replace(icRegex, '<code>$1</code>');
+
+        // Headers
+        html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+        html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+        html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+        html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+        // Bold and italic
+        html = html.replace(/[*][*][*](.+?)[*][*][*]/g, '<strong><em>$1</em></strong>');
+        html = html.replace(/[*][*](.+?)[*][*]/g, '<strong>$1</strong>');
+        html = html.replace(/[*](.+?)[*]/g, '<em>$1</em>');
+
+        // Links
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+
+        // Horizontal rules
+        html = html.replace(/^---+$/gm, '<hr>');
+
+        // Blockquotes
+        html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+        // Lists (unordered)
+        html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+        html = html.replace(new RegExp('(<li>.*</li>)', 'gs'), '<ul>$1</ul>');
+        // Clean up nested ul tags
+        html = html.replace(new RegExp('</ul>' + '\\\\s*' + '<ul>', 'g'), '');
+
+        // Tables
+        html = html.replace(new RegExp('^[|](.+)[|]$', 'gm'), function(m, row) {
+          var cells = row.split('|').map(function(c){ return c.trim(); });
+          if (cells.every(function(c){ return /^[-:]+$/.test(c); })) return '';
+          var tag = 'td';
+          return '<tr>' + cells.map(function(c){ return '<' + tag + '>' + c + '</' + tag + '>'; }).join('') + '</tr>';
+        });
+        html = html.replace(new RegExp('(<tr>.*</tr>\\\\s*)+', 'gs'), function(m) {
+          return '<table>' + m + '</table>';
+        });
+
+        // Paragraphs (double newline)
+        html = html.replace(new RegExp('\\\\n\\\\n+', 'g'), '</p><p>');
+        html = '<p>' + html + '</p>';
+
+        // Clean up empty paragraphs
+        html = html.replace(new RegExp('<p>\\\\s*</p>', 'g'), '');
+        html = html.replace(new RegExp('<p>\\\\s*(<h[1-6]|<pre|<ul|<ol|<hr|<blockquote|<table)', 'g'), '$1');
+        html = html.replace(new RegExp('(</h[1-6]>|</pre>|</ul>|</ol>|<hr>|</blockquote>|</table>)\\\\s*</p>', 'g'), '$1');
+
+        return html;
+      }
+
+      // -- Search --
+      function debounceSearch() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(doSearch, 300);
+      }
+
+      function doSearch() {
+        var q = document.getElementById('searchBox').value.trim();
+        if (!q || q.length < 2) {
+          document.getElementById('searchResults').innerHTML = '';
+          return;
+        }
+
+        fetch('/api/memory/search?q=' + encodeURIComponent(q)).then(function(r){return r.json()}).then(function(data){
+          if (!data.results || !data.results.length) {
+            document.getElementById('searchResults').innerHTML = '<div style="color:#3a4a6a;font-size:0.78rem;padding:0.5rem">No results found</div>';
+            return;
+          }
+
+          var html = '<div style="color:#5a6a8a;font-size:0.65rem;margin-bottom:0.5rem;font-weight:600">' + data.total + ' result' + (data.total !== 1 ? 's' : '') + '</div>';
+          data.results.slice(0, 20).forEach(function(r) {
+            var typeClass = 'sr-' + r.type.replace('-', '');
+            var highlighted = escapeHtml(r.text).replace(new RegExp('(' + escapeRegex(q) + ')', 'gi'), '<mark>$1</mark>');
+            html += '<div class="search-result ' + typeClass + '" onclick="loadFile(\\'' + escapeJs(r.filename) + '\\')">';
+            html += '<div class="sr-file">' + escapeHtml(r.filename) + ' : ' + r.line + '</div>';
+            html += '<div class="sr-text">' + highlighted + '</div>';
+            html += '</div>';
+          });
+          document.getElementById('searchResults').innerHTML = html;
+        }).catch(function(){
+          document.getElementById('searchResults').innerHTML = '<div style="color:#ff4757;font-size:0.78rem;padding:0.5rem">Search failed</div>';
+        });
+      }
+
+      // -- Add Memory --
+      function toggleAddForm() {
+        document.getElementById('addForm').classList.toggle('active');
+        if (document.getElementById('addForm').classList.contains('active')) {
+          document.getElementById('addContent').focus();
+        }
+      }
+
+      function saveMemory() {
+        var content = document.getElementById('addContent').value.trim();
+        var category = document.getElementById('addCategory').value;
+        if (!content) return;
+
+        fetch('/api/memory/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: content, category: category }),
+        }).then(function(r){return r.json()}).then(function(data){
+          if (data.success) {
+            showToast('✅ Saved to ' + data.saved);
+            document.getElementById('addContent').value = '';
+            document.getElementById('addForm').classList.remove('active');
+            loadSidebar(); // Refresh
+            if (data.saved) loadFile(data.saved); // Show the updated file
+          } else {
+            showToast('❌ ' + (data.error || 'Failed to save'));
+          }
+        }).catch(function(){
+          showToast('❌ Failed to save memory');
+        });
+      }
+
+      // -- Stats --
+      function renderStats(data) {
+        var dailyCount = data.files.filter(function(f){return f.type === 'daily'}).length;
+        var brainCount = data.files.filter(function(f){return f.type === 'brain'}).length;
+        var totalSize = data.files.reduce(function(a, f){return a + (f.size || 0)}, 0);
+        var hasLtm = data.files.some(function(f){return f.type === 'long-term'});
+
+        var html = '';
+        html += '<div class="stat-row"><span class="stat-label">Daily Journals</span><span class="stat-value">' + dailyCount + '</span></div>';
+        html += '<div class="stat-row"><span class="stat-label">Brain Docs</span><span class="stat-value">' + brainCount + '</span></div>';
+        if (hasLtm) html += '<div class="stat-row"><span class="stat-label">Long-Term Memory</span><span class="stat-value" style="color:#f9ca24">Active</span></div>';
+        html += '<div class="stat-row"><span class="stat-label">Total Size</span><span class="stat-value">' + formatSize(totalSize) + '</span></div>';
+        document.getElementById('statsContent').innerHTML = html;
+      }
+
+      // -- Helpers --
+      function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+      }
+
+      function formatMonthKey(key) {
+        var parts = key.split('-');
+        var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return months[parseInt(parts[1]) - 1] + ' ' + parts[0];
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+
+      function escapeJs(s) {
+        return String(s).split("\\\\").join("\\\\\\\\").split("'").join("\\\\'");
+      }
+
+      function escapeRegex(s) {
+        var specials = '.\\\\*+?^$' + '{}()|[]-';
+        var out = '';
+        for (var i = 0; i < s.length; i++) {
+          if (specials.indexOf(s[i]) !== -1) out += '\\\\';
+          out += s[i];
+        }
+        return out;
+      }
+
+      function showToast(msg) {
+        var el = document.getElementById('toast');
+        el.textContent = msg;
+        el.classList.add('show');
+        setTimeout(function(){ el.classList.remove('show'); }, 3000);
+      }
+
+      function toggleGroup(el) {
+        el.classList.toggle('collapsed');
+        var content = el.nextElementSibling;
+        if (content) content.classList.toggle('collapsed');
+      }
+
+      // -- Init --
+      loadSidebar();
+      // Refresh every 30s for real-time updates
+      setInterval(function() {
+        fetch('/api/memory/list').then(function(r){return r.json()}).then(function(data){
+          memoryData = data;
+          renderStats(data);
+          // Only re-render sidebar if file count changed
+          var sidebarItems = document.querySelectorAll('.memory-item');
+          if (sidebarItems.length !== data.files.length) {
+            renderSidebar(data);
+          }
+        }).catch(function(){});
+      }, 30000);
+    </script>
+  </body></html>`);
+});
+
 // --─ Health Check ------------------------------------------------------------
 app.get('/health', (req, res) => res.json({
   status: 'ok',
@@ -2802,8 +3783,7 @@ app.listen(port, () => {
 module.exports = app;
 
 // --─ Content Items Backend (JSON file-backed CRUD) --------------------------─
-const fs = require('fs');
-const path = require('path');
+// fs and path already required above (Memory API section)
 const CONTENT_FILE = path.join(__dirname, 'content-items.json');
 
 // In-memory store, loaded from file on startup
