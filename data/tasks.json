@@ -90,7 +90,7 @@
   {
     "id": "t1771043483916",
     "title": "Verify Vercel Deployment",
-    "desc": "Check mission-control-one-mu.vercel.app in 2-3 minutes to verify Shorts tab + API-based Kanban are live",
+    "desc": "Check mission-control-one-mu.vercel.app - 500 error due to serverless filesystem incompatibility. Fix requires Supabase credentials from Luke.",
     "priority": "high",
     "assignee": "Jarvis",
     "column": "in-progress",
@@ -113,9 +113,9 @@
     "id": "t1771048202333",
     "title": "Setup Notion Commission Tracking Database",
     "desc": "Create proper Notion database with Total Earned property for automated commission tracking. Current: script logs only, needs manual entry.",
-    "priority": "medium",
+    "priority": "done",
     "assignee": "Jarvis",
-    "column": "ideas",
+    "column": "done",
     "due": "",
     "created": 1771048202333,
     "updated": 1771048202333
