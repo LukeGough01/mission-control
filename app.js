@@ -185,7 +185,6 @@ const NAV_HTML = `
     <a href="/growth" id="nav-growth">Growth</a>
     <a href="/pipeline" id="nav-pipeline">Pipeline</a>
     <a href="/content" id="nav-content">Content</a>
-    <a href="/shorts" id="nav-shorts">Shorts</a>
     <a href="/memory" id="nav-memory">Memory</a>
   </nav>
   <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/service-worker.js').catch(function(){})}</script>
@@ -1498,70 +1497,25 @@ app.get('/pipeline', (req, res) => {
     </div>
 
     <script>
-      var tasks = [];
+      var tasks = JSON.parse(localStorage.getItem('mc_pipeline_tasks') || '[]');
       var draggedId = null;
       var searchTerm = '';
 
-      async function loadTasks() {
-        try {
-          const res = await fetch('/api/tasks');
-          tasks = await res.json();
-          renderBoard(); addTouchHandlers();
-        } catch (err) {
-          console.error('Error loading tasks:', err);
-        }
+      // Seed demo tasks if empty
+      if (tasks.length === 0) {
+        tasks = [
+          { id: 't1', title: 'Channel rebrand concept', desc: 'Explore new visual identity, thumbnails, and banner designs', priority: 'high', assignee: 'Luke', column: 'ideas', due: '', created: Date.now() },
+          { id: 't2', title: 'Collaboration outreach list', desc: 'Research and compile list of 20 creators for potential collabs', priority: 'medium', assignee: '', column: 'ideas', due: '', created: Date.now() },
+          { id: 't3', title: 'SEO keyword research', desc: 'Analyze top-performing keywords in the niche using TubeBuddy', priority: 'medium', assignee: 'AI', column: 'in-progress', due: '', created: Date.now() },
+          { id: 't4', title: 'Film tutorial episode 12', desc: 'Script, film, and rough cut for the next tutorial installment', priority: 'urgent', assignee: 'Luke', column: 'in-progress', due: '2026-02-15', created: Date.now() },
+          { id: 't5', title: 'Thumbnail A/B test results', desc: 'Review click-through rate data from last 5 thumbnail tests', priority: 'low', assignee: '', column: 'review', due: '', created: Date.now() },
+          { id: 't6', title: 'Setup Shorts workflow', desc: 'Established repurposing pipeline from long-form to Shorts', priority: 'medium', assignee: 'Luke', column: 'done', due: '', created: Date.now() },
+        ];
+        saveTasks();
       }
 
-      async function saveTaskToAPI(taskData, taskId) {
-        try {
-          if (taskId) {
-            const res = await fetch('/api/tasks/' + taskId, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(taskData)
-            });
-            const updated = await res.json();
-            const index = tasks.findIndex(t => t.id === taskId);
-            if (index >= 0) tasks[index] = updated;
-          } else {
-            const res = await fetch('/api/tasks', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(taskData)
-            });
-            const newTask = await res.json();
-            tasks.push(newTask);
-          }
-          renderBoard(); addTouchHandlers();
-        } catch (err) {
-          console.error('Error saving task:', err);
-        }
-      }
-
-      async function deleteTaskFromAPI(taskId) {
-        try {
-          await fetch('/api/tasks/' + taskId, { method: 'DELETE' });
-          tasks = tasks.filter(t => t.id !== taskId);
-          renderBoard(); addTouchHandlers();
-        } catch (err) {
-          console.error('Error deleting task:', err);
-        }
-      }
-
-      async function updateTaskColumn(taskId, newColumn) {
-        try {
-          await fetch('/api/tasks/' + taskId, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ column: newColumn })
-          });
-          const task = tasks.find(t => t.id === taskId);
-          if (task) task.column = newColumn;
-          renderBoard(); addTouchHandlers();
-        } catch (err) {
-          console.error('Error updating task column:', err);
-        }
-      }
+      function saveTasks() { localStorage.setItem('mc_pipeline_tasks', JSON.stringify(tasks)); }
+      function genId() { return 't' + Date.now() + Math.random().toString(36).substr(2, 5); }
 
       function renderBoard() {
         var cols = ['ideas', 'in-progress', 'review', 'done'];
@@ -1599,8 +1553,8 @@ app.get('/pipeline', (req, res) => {
 
             card.innerHTML = '<div class="priority-bar" style="background:' + pColor + '"></div>' +
               '<div class="task-actions">' +
-                '<button class="task-action-btn" onclick="event.stopPropagation();openModal(null,\'' + task.id + '\')"✏️</button>' +
-                '<button class="task-action-btn delete" onclick="event.stopPropagation();deleteTaskById(\'' + task.id + '\')">🗑</button>' +
+                '<button class="task-action-btn" onclick="event.stopPropagation();openModal(null,\\'' + task.id + '\\')">✏️</button>' +
+                '<button class="task-action-btn delete" onclick="event.stopPropagation();deleteTaskById(\\'' + task.id + '\\')">🗑</button>' +
               '</div>' +
               '<div class="task-title">' + escHtml(task.title) + '</div>' +
               (task.desc ? '<div class="task-desc">' + escHtml(task.desc) + '</div>' : '') +
@@ -1613,56 +1567,6 @@ app.get('/pipeline', (req, res) => {
         });
       }
 
-
-
-      // Mobile touch support for drag-and-drop
-      var touchCard = null;
-      var touchStartCol = null;
-
-      function addTouchHandlers() {
-        document.querySelectorAll('.task-card').forEach(function(card) {
-          card.addEventListener('touchstart', handleTouchStart, { passive: false });
-          card.addEventListener('touchmove', handleTouchMove, { passive: false });
-          card.addEventListener('touchend', handleTouchEnd, { passive: false });
-        });
-      }
-
-      function handleTouchStart(e) {
-        touchCard = e.currentTarget;
-        touchStartCol = touchCard.closest('.kanban-col').dataset.col;
-        touchCard.classList.add('dragging');
-        e.preventDefault();
-      }
-
-      function handleTouchMove(e) {
-        if (!touchCard) return;
-        e.preventDefault();
-        var touch = e.touches[0];
-        var elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
-        var column = elementBelow ? elementBelow.closest('.kanban-col') : null;
-        document.querySelectorAll('.kanban-col').forEach(function(col) { col.classList.remove('drag-over'); });
-        if (column) column.classList.add('drag-over');
-      }
-
-      function handleTouchEnd(e) {
-        if (!touchCard) return;
-        e.preventDefault();
-        var touch = e.changedTouches[0];
-        var elementBelow = document.elementFromPoint(touch.clientX, touch.clientY);
-        var column = elementBelow ? elementBelow.closest('.kanban-col') : null;
-        document.querySelectorAll('.kanban-col').forEach(function(col) { col.classList.remove('drag-over'); });
-        if (column) {
-          var newCol = column.dataset.col;
-          var taskId = touchCard.dataset.id;
-          if (newCol !== touchStartCol) {
-            updateTaskColumn(taskId, newCol);
-          }
-        }
-        touchCard.classList.remove('dragging');
-        touchCard = null;
-        touchStartCol = null;
-      }
-
       function escHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
       function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; var col = e.currentTarget; col.classList.add('drag-over'); }
@@ -1671,12 +1575,13 @@ app.get('/pipeline', (req, res) => {
         e.preventDefault();
         e.currentTarget.classList.remove('drag-over');
         if (!draggedId) return;
-        updateTaskColumn(draggedId, colName);
+        var task = tasks.find(function(t) { return t.id === draggedId; });
+        if (task) { task.column = colName; saveTasks(); renderBoard(); }
       }
 
       function filterTasks() {
         searchTerm = document.getElementById('searchInput').value.toLowerCase();
-        renderBoard(); addTouchHandlers();
+        renderBoard();
       }
 
       function openModal(col, editId) {
@@ -1721,7 +1626,16 @@ app.get('/pipeline', (req, res) => {
           due: document.getElementById('taskDue').value,
           column: document.getElementById('taskColumn').value,
         };
-        saveTaskToAPI(data, id || null);
+        if (id) {
+          var task = tasks.find(function(t) { return t.id === id; });
+          if (task) Object.assign(task, data);
+        } else {
+          data.id = genId();
+          data.created = Date.now();
+          tasks.push(data);
+        }
+        saveTasks();
+        renderBoard();
         closeModal();
       }
 
@@ -1731,10 +1645,12 @@ app.get('/pipeline', (req, res) => {
       }
 
       function deleteTaskById(id) {
-        deleteTaskFromAPI(id);
+        tasks = tasks.filter(function(t) { return t.id !== id; });
+        saveTasks();
+        renderBoard();
       }
 
-      loadTasks();
+      renderBoard();
     </script>
     <script>document.getElementById('nav-pipeline').classList.add('active');</script>
   </body></html>`);
@@ -3989,309 +3905,3 @@ app.post('/api/content/items/bulk', (req, res) => {
   saveContentItems();
   res.json({ success: true, added, total: contentItems.length });
 });
-
-// ============================================================
-// KANBAN / TASKS API
-// ============================================================
-
-const TASKS_FILE = path.join(__dirname, 'data', 'tasks.json');
-
-function loadTasks() {
-  try {
-    if (fs.existsSync(TASKS_FILE)) {
-      const raw = fs.readFileSync(TASKS_FILE, 'utf8');
-      return JSON.parse(raw);
-    }
-  } catch (err) {
-    console.error('Error loading tasks:', err);
-  }
-  return [];
-}
-
-function saveTasks(tasks) {
-  try {
-    fs.mkdirSync(path.dirname(TASKS_FILE), { recursive: true });
-    fs.writeFileSync(TASKS_FILE, JSON.stringify(tasks, null, 2), 'utf8');
-  } catch (err) {
-    console.error('Error saving tasks:', err);
-  }
-}
-
-// GET /api/tasks - List all tasks
-app.get('/api/tasks', (req, res) => {
-  const tasks = loadTasks();
-  res.json(tasks);
-});
-
-// POST /api/tasks - Create new task
-app.post('/api/tasks', (req, res) => {
-  const tasks = loadTasks();
-  const newTask = {
-    id: 't' + Date.now(),
-    title: req.body.title || 'Untitled',
-    desc: req.body.desc || '',
-    priority: req.body.priority || 'medium',
-    assignee: req.body.assignee || 'Jarvis',
-    column: req.body.column || 'ideas',
-    due: req.body.due || '',
-    created: Date.now(),
-    updated: Date.now()
-  };
-  tasks.push(newTask);
-  saveTasks(tasks);
-  res.json(newTask);
-});
-
-// PATCH /api/tasks/:id - Update task
-app.patch('/api/tasks/:id', (req, res) => {
-  const tasks = loadTasks();
-  const task = tasks.find(t => t.id === req.params.id);
-  if (!task) {
-    return res.status(404).json({ error: 'Task not found' });
-  }
-  
-  if (req.body.title !== undefined) task.title = req.body.title;
-  if (req.body.desc !== undefined) task.desc = req.body.desc;
-  if (req.body.priority !== undefined) task.priority = req.body.priority;
-  if (req.body.assignee !== undefined) task.assignee = req.body.assignee;
-  if (req.body.column !== undefined) task.column = req.body.column;
-  if (req.body.due !== undefined) task.due = req.body.due;
-  task.updated = Date.now();
-  
-  saveTasks(tasks);
-  res.json(task);
-});
-
-// DELETE /api/tasks/:id - Delete task
-app.delete('/api/tasks/:id', (req, res) => {
-  let tasks = loadTasks();
-  const index = tasks.findIndex(t => t.id === req.params.id);
-  if (index === -1) {
-    return res.status(404).json({ error: 'Task not found' });
-  }
-  
-  tasks.splice(index, 1);
-  saveTasks(tasks);
-  res.json({ success: true });
-});
-
-
-// ============================================================
-// SHORTS GENERATOR ROUTES
-// ============================================================
-
-const multer = require('multer');
-const { spawn } = require('child_process');
-
-// Setup multer for file uploads
-const upload = multer({ dest: path.join(__dirname, '../artifacts/shorts/uploads/') });
-
-// GET /shorts - Shorts generator page
-app.get('/shorts', (req, res) => {
-  res.send(`<!DOCTYPE html><html lang="en"><head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shorts Generator -- Mission Control</title>
-    ${NAV_STYLE}
-    <style>
-      .page-header h1 { font-size: 2.2rem; font-weight: 800; background: linear-gradient(135deg, #00d4ff 0%, #7b2ff7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-      .page-header p { color: #5a6a8a; margin-top: 0.3rem; }
-      .generator-card {
-        background: rgba(12, 15, 30, 0.7); backdrop-filter: blur(20px);
-        border: 1px solid rgba(255,255,255,0.08); border-radius: 20px;
-        padding: 2rem; margin-bottom: 2rem;
-      }
-      .generator-card h2 { color: #c0d0e8; font-size: 1.3rem; margin-bottom: 1.5rem; }
-      .upload-zone {
-        border: 2px dashed rgba(0, 212, 255, 0.3);
-        border-radius: 16px;
-        padding: 3rem;
-        text-align: center;
-        background: rgba(0, 212, 255, 0.02);
-        cursor: pointer;
-        transition: all 0.3s;
-      }
-      .upload-zone:hover { border-color: rgba(0, 212, 255, 0.6); background: rgba(0, 212, 255, 0.05); }
-      .upload-icon { font-size: 3rem; margin-bottom: 1rem; }
-      .upload-text { color: #c0d0e8; font-size: 1.1rem; margin-bottom: 0.5rem; }
-      .upload-hint { color: #5a6a8a; font-size: 0.85rem; }
-      .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-top: 1.5rem; }
-      .form-group label { display: block; color: #5a6a8a; font-size: 0.85rem; margin-bottom: 0.5rem; font-weight: 600; }
-      .form-group input, .form-group select { 
-        width: 100%; padding: 0.75rem; background: rgba(10, 12, 25, 0.8); 
-        border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; 
-        color: #e0e0e0; font-size: 0.9rem; font-family: inherit;
-      }
-      .btn { padding: 0.8rem 1.75rem; border: none; border-radius: 12px; font-weight: 600; font-size: 0.9rem; cursor: pointer; font-family: inherit; transition: all 0.3s; }
-      .btn-primary { background: linear-gradient(135deg, #00d4ff 0%, #7b2ff7 100%); color: white; }
-      .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0, 212, 255, 0.4); }
-      .progress { background: rgba(10, 12, 25, 0.8); border-radius: 12px; padding: 1.5rem; margin-top: 1.5rem; display: none; }
-      .progress.active { display: block; }
-      .progress-text { color: #c0d0e8; font-size: 0.9rem; }
-      .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem; margin-top: 2rem; }
-      .short-card {
-        background: rgba(12, 15, 30, 0.7); backdrop-filter: blur(20px);
-        border: 1px solid rgba(255,255,255,0.08); border-radius: 16px;
-        padding: 1rem;
-      }
-      .short-preview { width: 100%; aspect-ratio: 9/16; background: #000; border-radius: 12px; margin-bottom: 0.75rem; }
-      .short-info { color: #c0d0e8; font-size: 0.85rem; margin-bottom: 0.5rem; }
-      .short-actions { display: flex; gap: 0.5rem; }
-      .short-actions button { flex: 1; padding: 0.5rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #c0d0e8; font-size: 0.8rem; cursor: pointer; }
-    </style>
-  </head><body>
-    ${NAV_BAR}
-    <div class="page-content">
-      <div class="page-header">
-        <h1>🎬 Shorts Generator</h1>
-        <p>Transform long-form videos into viral vertical clips</p>
-      </div>
-      <div class="generator-card">
-        <h2>1. Upload Video</h2>
-        <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
-          <div class="upload-icon">📹</div>
-          <div class="upload-text">Click to upload or drag & drop</div>
-          <div class="upload-hint">MP4, MOV, or any video format</div>
-          <input type="file" id="fileInput" accept="video/*" style="display:none" onchange="handleFileSelect(event)" />
-        </div>
-        <div class="form-grid" id="optionsPanel" style="display:none">
-          <div class="form-group">
-            <label>Number of Clips</label>
-            <input type="number" id="numClips" value="3" min="1" max="10" />
-          </div>
-          <div class="form-group">
-            <label>Clip Duration (seconds)</label>
-            <input type="number" id="duration" value="45" min="15" max="90" />
-          </div>
-          <div class="form-group">
-            <label>Quality</label>
-            <select id="quality">
-              <option value="high">High</option>
-              <option value="medium">Medium</option>
-              <option value="low">Low</option>
-            </select>
-          </div>
-        </div>
-        <button class="btn btn-primary" id="generateBtn" style="display:none; margin-top:1.5rem" onclick="generateShorts()">Generate Shorts</button>
-        <div class="progress" id="progress">
-          <div class="progress-text" id="progressText">Processing...</div>
-        </div>
-      </div>
-      <div class="generator-card" id="gallerySection" style="display:none">
-        <h2>📂 Generated Shorts</h2>
-        <div class="gallery" id="gallery"></div>
-      </div>
-    </div>
-    <script>
-      let selectedFile = null;
-      function handleFileSelect(e) {
-        const file = e.target.files[0];
-        if (file && file.type.startsWith('video/')) {
-          selectedFile = file;
-          document.querySelector('.upload-text').textContent = '✅ ' + file.name;
-          document.getElementById('optionsPanel').style.display = 'grid';
-          document.getElementById('generateBtn').style.display = 'block';
-        }
-      }
-      async function generateShorts() {
-        if (!selectedFile) return;
-        document.getElementById('progress').classList.add('active');
-        document.getElementById('generateBtn').disabled = true;
-        const formData = new FormData();
-        formData.append('video', selectedFile);
-        formData.append('numClips', document.getElementById('numClips').value);
-        formData.append('duration', document.getElementById('duration').value);
-        formData.append('quality', document.getElementById('quality').value);
-        try {
-          const res = await fetch('/api/shorts/generate', { method: 'POST', body: formData });
-          const result = await res.json();
-          displayShorts(result.shorts);
-          document.getElementById('progress').classList.remove('active');
-          document.getElementById('generateBtn').disabled = false;
-        } catch (err) {
-          alert('Error: ' + err.message);
-          document.getElementById('progress').classList.remove('active');
-          document.getElementById('generateBtn').disabled = false;
-        }
-      }
-      function displayShorts(shorts) {
-        const gallery = document.getElementById('gallery');
-        gallery.innerHTML = '';
-        shorts.forEach((short, i) => {
-          const card = document.createElement('div');
-          card.className = 'short-card';
-          card.innerHTML = '<video class="short-preview" src="/api/shorts/download/' + short.filename + '" controls></video><div class="short-info"><strong>Clip ' + (i+1) + '</strong><br>Start: ' + short.start + 's</div><div class="short-actions"><button onclick="window.location.href=\\'/api/shorts/download/' + short.filename + '\\'">⬇️ Download</button></div>';
-          gallery.appendChild(card);
-        });
-        document.getElementById('gallerySection').style.display = 'block';
-      }
-    </script>
-  </body></html>`);
-});
-
-// POST /api/shorts/generate - Generate shorts from uploaded video
-app.post('/api/shorts/generate', upload.single('video'), async (req, res) => {
-  try {
-    const videoPath = req.file.path;
-    const numClips = parseInt(req.body.numClips) || 3;
-    const duration = parseInt(req.body.duration) || 45;
-    const quality = req.body.quality || 'high';
-    
-    const scriptPath = path.join(__dirname, '../scripts/ai-shorts-maker.py');
-    const python = spawn('python3', [
-      scriptPath,
-      '--video', videoPath,
-      '--num-clips', numClips,
-      '--duration', duration,
-      '--quality', quality
-    ]);
-    
-    let output = '';
-    python.stdout.on('data', (data) => { output += data.toString(); });
-    python.stderr.on('data', (data) => { console.error(data.toString()); });
-    
-    python.on('close', (code) => {
-      if (code === 0) {
-        const manifestPath = path.join(__dirname, '../artifacts/shorts/latest-batch.json');
-        try {
-          const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-          const shorts = manifest.shorts.map(s => ({
-            filename: path.basename(s.file),
-            start: s.start,
-            duration: s.duration
-          }));
-          res.json({ success: true, shorts });
-        } catch (err) {
-          res.status(500).json({ error: 'Failed to read manifest' });
-        }
-      } else {
-        res.status(500).json({ error: 'Generation failed' });
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// GET /api/shorts/download/:filename - Download a generated short
-app.get('/api/shorts/download/:filename', (req, res) => {
-  const filePath = path.join(__dirname, '../artifacts/shorts', req.params.filename);
-  if (fs.existsSync(filePath)) {
-    res.download(filePath);
-  } else {
-    res.status(404).send('File not found');
-  }
-});
-
-// GET /api/shorts/list - List all generated shorts
-app.get('/api/shorts/list', (req, res) => {
-  const shortsDir = path.join(__dirname, '../artifacts/shorts');
-  try {
-    const files = fs.readdirSync(shortsDir)
-      .filter(f => f.endsWith('.mp4'))
-      .map(f => ({ filename: f, start: 0, duration: 45 }));
-    res.json(files);
-  } catch (err) {
-    res.json([]);
-  }
-});
-
