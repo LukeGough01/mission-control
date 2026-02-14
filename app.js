@@ -1497,24 +1497,48 @@ app.get('/pipeline', (req, res) => {
     </div>
 
     <script>
-      var tasks = JSON.parse(localStorage.getItem('mc_pipeline_tasks') || '[]');
+      var tasks = [];
+      
+      // Load tasks from API
+      async function loadTasksFromAPI() {
+        try {
+          const response = await fetch('/api/tasks');
+          if (response.ok) {
+            tasks = await response.json();
+            renderBoard();
+          }
+        } catch (error) {
+          console.error('Error loading tasks:', error);
+        }
+      }
+      
+      // Load on page init
+      window.addEventListener('DOMContentLoaded', () => {
+        loadTasksFromAPI();
+      });
       var draggedId = null;
       var searchTerm = '';
 
-      // Seed demo tasks if empty
-      if (tasks.length === 0) {
-        tasks = [
-          { id: 't1', title: 'Channel rebrand concept', desc: 'Explore new visual identity, thumbnails, and banner designs', priority: 'high', assignee: 'Luke', column: 'ideas', due: '', created: Date.now() },
-          { id: 't2', title: 'Collaboration outreach list', desc: 'Research and compile list of 20 creators for potential collabs', priority: 'medium', assignee: '', column: 'ideas', due: '', created: Date.now() },
-          { id: 't3', title: 'SEO keyword research', desc: 'Analyze top-performing keywords in the niche using TubeBuddy', priority: 'medium', assignee: 'AI', column: 'in-progress', due: '', created: Date.now() },
-          { id: 't4', title: 'Film tutorial episode 12', desc: 'Script, film, and rough cut for the next tutorial installment', priority: 'urgent', assignee: 'Luke', column: 'in-progress', due: '2026-02-15', created: Date.now() },
-          { id: 't5', title: 'Thumbnail A/B test results', desc: 'Review click-through rate data from last 5 thumbnail tests', priority: 'low', assignee: '', column: 'review', due: '', created: Date.now() },
-          { id: 't6', title: 'Setup Shorts workflow', desc: 'Established repurposing pipeline from long-form to Shorts', priority: 'medium', assignee: 'Luke', column: 'done', due: '', created: Date.now() },
-        ];
-        saveTasks();
+      async function saveTasks() {
+        // Tasks are now saved via individual API calls
       }
-
-      function saveTasks() { localStorage.setItem('mc_pipeline_tasks', JSON.stringify(tasks)); }
+      
+      async function updateTaskAPI(id, updates) {
+        try {
+          const response = await fetch('/api/tasks/' + id, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates)
+          });
+          if (response.ok) {
+            const updated = await response.json();
+            const index = tasks.findIndex(function(t) { return t.id === id; });
+            if (index >= 0) tasks[index] = updated;
+          }
+        } catch (error) {
+          console.error('Error updating task:', error);
+        }
+      }
       function genId() { return 't' + Date.now() + Math.random().toString(36).substr(2, 5); }
 
       function renderBoard() {
@@ -1576,7 +1600,11 @@ app.get('/pipeline', (req, res) => {
         e.currentTarget.classList.remove('drag-over');
         if (!draggedId) return;
         var task = tasks.find(function(t) { return t.id === draggedId; });
-        if (task) { task.column = colName; saveTasks(); renderBoard(); }
+        if (task) { 
+          task.column = colName; 
+          updateTaskAPI(task.id, { column: colName }); 
+          renderBoard(); 
+        }
       }
 
       function filterTasks() {
@@ -1614,7 +1642,7 @@ app.get('/pipeline', (req, res) => {
 
       function closeModal() { document.getElementById('modalOverlay').classList.remove('active'); }
 
-      function saveTask() {
+      async function saveTask() {
         var title = document.getElementById('taskTitleInput').value.trim();
         if (!title) return;
         var id = document.getElementById('taskId').value;
@@ -1626,17 +1654,40 @@ app.get('/pipeline', (req, res) => {
           due: document.getElementById('taskDue').value,
           column: document.getElementById('taskColumn').value,
         };
-        if (id) {
-          var task = tasks.find(function(t) { return t.id === id; });
-          if (task) Object.assign(task, data);
-        } else {
-          data.id = genId();
-          data.created = Date.now();
-          tasks.push(data);
+        
+        try {
+          if (id) {
+            // Update existing task
+            const response = await fetch('/api/tasks/' + id, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data)
+            });
+            if (response.ok) {
+              const updated = await response.json();
+              const index = tasks.findIndex(function(t) { return t.id === id; });
+              if (index >= 0) tasks[index] = updated;
+            }
+          } else {
+            // Create new task
+            data.id = genId();
+            data.created = Date.now();
+            const response = await fetch('/api/tasks', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(data)
+            });
+            if (response.ok) {
+              const newTask = await response.json();
+              tasks.push(newTask);
+            }
+          }
+          renderBoard();
+          closeModal();
+        } catch (error) {
+          console.error('Error saving task:', error);
+          alert('Failed to save task');
         }
-        saveTasks();
-        renderBoard();
-        closeModal();
       }
 
       function deleteTask() {
@@ -1644,10 +1695,17 @@ app.get('/pipeline', (req, res) => {
         if (id) { deleteTaskById(id); closeModal(); }
       }
 
-      function deleteTaskById(id) {
-        tasks = tasks.filter(function(t) { return t.id !== id; });
-        saveTasks();
-        renderBoard();
+      async function deleteTaskById(id) {
+        try {
+          const response = await fetch('/api/tasks/' + id, { method: 'DELETE' });
+          if (response.ok) {
+            tasks = tasks.filter(t => t.id !== id);
+            renderBoard();
+          }
+        } catch (error) {
+          console.error('Error deleting task:', error);
+          alert('Failed to delete task');
+        }
       }
 
       renderBoard();
