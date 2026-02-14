@@ -1,6 +1,11 @@
 const express = require('express');
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk').default || require('@anthropic-ai/sdk');
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+const multer = require('multer');
+const upload = multer({ dest: '/tmp/' });
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -184,6 +189,7 @@ const NAV_HTML = `
     <a href="/council" id="nav-council">Council</a>
     <a href="/growth" id="nav-growth">Growth</a>
     <a href="/pipeline" id="nav-pipeline">Pipeline</a>
+    <a href="/shorts" id="nav-shorts">Shorts</a>
     <a href="/content" id="nav-content">Content</a>
     <a href="/memory" id="nav-memory">Memory</a>
   </nav>
@@ -1715,6 +1721,245 @@ app.get('/pipeline', (req, res) => {
 });
 
 // --─ Growth Page (YouTube Analytics Dashboard) ------------------------------
+
+// --─ Shorts Generator Page ----------------------------------------------
+app.get('/shorts', (req, res) => {
+  res.send(`<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Shorts Generator - Mission Control</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>">
+    <style>
+      ${NAV_STYLE}
+      .upload-zone {
+        border: 3px dashed rgba(147,197,253,0.3);
+        border-radius: 16px;
+        padding: 60px;
+        text-align: center;
+        background: rgba(30,41,59,0.3);
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-bottom: 30px;
+      }
+      .upload-zone:hover, .upload-zone.drag-over {
+        border-color: rgba(147,197,253,0.8);
+        background: rgba(59,130,246,0.1);
+        transform: translateY(-2px);
+      }
+      .upload-icon { font-size: 64px; margin-bottom: 20px; opacity: 0.7; }
+      .gen-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+      }
+      .option-card {
+        background: linear-gradient(135deg, rgba(30,41,59,0.6), rgba(15,23,42,0.8));
+        border: 1px solid rgba(148,163,184,0.1);
+        border-radius: 12px;
+        padding: 20px;
+      }
+      .option-card label { display: block; margin-bottom: 8px; color: #94a3b8; font-size: 14px; }
+      .option-card input, .option-card select {
+        width: 100%;
+        padding: 12px;
+        background: rgba(15,23,42,0.8);
+        border: 1px solid rgba(148,163,184,0.2);
+        border-radius: 8px;
+        color: #e2e8f0;
+        font-size: 15px;
+      }
+      .generate-btn {
+        width: 100%;
+        padding: 18px;
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        border: none;
+        border-radius: 12px;
+        color: white;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+      .generate-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 40px rgba(59,130,246,0.4); }
+      .shorts-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 20px;
+        margin-top: 40px;
+      }
+      .short-card {
+        background: linear-gradient(135deg, rgba(30,41,59,0.6), rgba(15,23,42,0.8));
+        border: 1px solid rgba(148,163,184,0.1);
+        border-radius: 12px;
+        overflow: hidden;
+        transition: transform 0.3s ease;
+      }
+      .short-card:hover { transform: translateY(-4px); }
+      .short-preview { width: 100%; aspect-ratio: 9/16; background: #0f172a; display: flex; align-items: center; justify-content: center; }
+      .short-actions { padding: 12px; display: flex; gap: 8px; }
+      .short-btn {
+        flex: 1;
+        padding: 8px;
+        background: rgba(59,130,246,0.2);
+        border: 1px solid rgba(59,130,246,0.3);
+        border-radius: 6px;
+        color: #93c5fd;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+      .short-btn:hover { background: rgba(59,130,246,0.3); }
+    </style>
+  </head>
+  <body>
+    ${NAV_HTML}
+    
+    <div class="content-wrapper">
+      <h1>🎬 Shorts Generator</h1>
+      <p style="color:#94a3b8;margin-bottom:40px;">Transform long-form videos into engaging YouTube Shorts</p>
+      
+      <div class="upload-zone" id="uploadZone">
+        <div class="upload-icon">📹</div>
+        <h3 style="margin-bottom:10px;">Drop video file here</h3>
+        <p style="color:#94a3b8;">or click to browse</p>
+        <input type="file" id="videoInput" accept="video/*" style="display:none;">
+      </div>
+      
+      <div class="gen-options">
+        <div class="option-card">
+          <label>Number of Clips</label>
+          <input type="number" id="numClips" value="5" min="1" max="20">
+        </div>
+        <div class="option-card">
+          <label>Clip Duration (seconds)</label>
+          <input type="number" id="duration" value="30" min="10" max="60">
+        </div>
+        <div class="option-card">
+          <label>Quality</label>
+          <select id="quality">
+            <option value="medium">Medium (faster)</option>
+            <option value="high">High (slower)</option>
+          </select>
+        </div>
+      </div>
+      
+      <button class="generate-btn" id="generateBtn" disabled>
+        <span id="btnText">Select a video to start</span>
+      </button>
+      
+      <div id="progress" style="display:none;margin-top:20px;padding:20px;background:rgba(30,41,59,0.6);border-radius:12px;text-align:center;">
+        <div style="font-size:48px;margin-bottom:10px;">⏳</div>
+        <div id="progressText">Processing...</div>
+      </div>
+      
+      <div class="shorts-grid" id="shortsGrid"></div>
+    </div>
+    
+    <script>
+      const uploadZone = document.getElementById('uploadZone');
+      const videoInput = document.getElementById('videoInput');
+      const generateBtn = document.getElementById('generateBtn');
+      const btnText = document.getElementById('btnText');
+      let selectedFile = null;
+      
+      uploadZone.onclick = () => videoInput.click();
+      
+      videoInput.onchange = (e) => {
+        selectedFile = e.target.files[0];
+        if (selectedFile) {
+          btnText.textContent = 'Generate ' + document.getElementById('numClips').value + ' Shorts from ' + selectedFile.name;
+          generateBtn.disabled = false;
+        }
+      };
+      
+      uploadZone.ondragover = (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('drag-over');
+      };
+      
+      uploadZone.ondragleave = () => {
+        uploadZone.classList.remove('drag-over');
+      };
+      
+      uploadZone.ondrop = (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('drag-over');
+        selectedFile = e.dataTransfer.files[0];
+        if (selectedFile && selectedFile.type.startsWith('video/')) {
+          videoInput.files = e.dataTransfer.files;
+          btnText.textContent = 'Generate ' + document.getElementById('numClips').value + ' Shorts from ' + selectedFile.name;
+          generateBtn.disabled = false;
+        }
+      };
+      
+      generateBtn.onclick = async () => {
+        if (!selectedFile) return;
+        
+        const formData = new FormData();
+        formData.append('video', selectedFile);
+        formData.append('clips', document.getElementById('numClips').value);
+        formData.append('duration', document.getElementById('duration').value);
+        formData.append('quality', document.getElementById('quality').value);
+        
+        document.getElementById('progress').style.display = 'block';
+        document.getElementById('progressText').textContent = 'Uploading and processing video...';
+        generateBtn.disabled = true;
+        
+        try {
+          const response = await fetch('/api/shorts/generate', {
+            method: 'POST',
+            body: formData
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            document.getElementById('progressText').textContent = '✅ Generated ' + result.shorts.length + ' shorts!';
+            loadShorts();
+            setTimeout(() => {
+              document.getElementById('progress').style.display = 'none';
+              generateBtn.disabled = false;
+              selectedFile = null;
+              videoInput.value = '';
+              btnText.textContent = 'Select a video to start';
+            }, 2000);
+          } else {
+            throw new Error('Generation failed');
+          }
+        } catch (error) {
+          document.getElementById('progressText').textContent = '❌ Error: ' + error.message;
+          generateBtn.disabled = false;
+        }
+      };
+      
+      async function loadShorts() {
+        try {
+          const response = await fetch('/api/shorts/list');
+          const shorts = await response.json();
+          const grid = document.getElementById('shortsGrid');
+          grid.innerHTML = '';
+          
+          shorts.forEach(short => {
+            const card = document.createElement('div');
+            card.className = 'short-card';
+            card.innerHTML = 
+              '<div class="short-preview"><video width="100%" height="100%" controls><source src="/api/shorts/download/' + short + '" type="video/mp4"></video></div>' +
+              '<div class="short-actions">' +
+                '<button class="short-btn" onclick="window.open(\'/api/shorts/download/' + short + '\')">⬇️ Download</button>' +
+              '</div>';
+            grid.appendChild(card);
+          });
+        } catch (error) {
+          console.error('Error loading shorts:', error);
+        }
+      }
+      
+      loadShorts();
+    </script>
+    <script>document.getElementById('nav-shorts').classList.add('active');</script>
+  </body></html>`);
+});
+
 app.get('/growth', (req, res) => {
   res.send(`<!DOCTYPE html><html lang="en"><head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2843,8 +3088,6 @@ Return ONLY the JSON array. No other text.`;
 });
 
 // --─ Memory / Second Brain API -----------------------------------------------
-const fs = require('fs');
-const path = require('path');
 const WORKSPACE = process.env.WORKSPACE_PATH || '/home/luke/.openclaw/workspace';
 const MEMORY_DIR = path.join(WORKSPACE, 'memory');
 const BRAIN_DIR = path.join(WORKSPACE, 'brain');
@@ -4075,6 +4318,81 @@ app.delete('/api/tasks/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting task:', error);
     res.status(404).json({ error: 'Task not found' });
+  }
+});
+
+
+// --─ Shorts API Routes --------------------------------------------------
+const SHORTS_DIR = path.join(__dirname, '../artifacts/shorts');
+if (!fs.existsSync(SHORTS_DIR)) {
+  fs.mkdirSync(SHORTS_DIR, { recursive: true });
+}
+
+app.post('/api/shorts/generate', upload.single('video'), async (req, res) => {
+  try {
+    const videoPath = req.file.path;
+    const clips = parseInt(req.body.clips) || 5;
+    const duration = parseInt(req.body.duration) || 30;
+    const quality = req.body.quality || 'medium';
+    
+    // Run ai-shorts-maker.py
+    const python = spawn('python3', [
+      path.join(__dirname, '../scripts/ai-shorts-maker.py'),
+      videoPath,
+      '--clips', clips.toString(),
+      '--duration', duration.toString(),
+      '--quality', quality
+    ]);
+    
+    let output = '';
+    python.stdout.on('data', (data) => { output += data.toString(); });
+    python.stderr.on('data', (data) => { console.error(data.toString()); });
+    
+    python.on('close', (code) => {
+      // Clean up temp file
+      fs.unlinkSync(videoPath);
+      
+      if (code === 0) {
+        // List generated shorts
+        const shorts = fs.readdirSync(SHORTS_DIR)
+          .filter(f => f.endsWith('.mp4'))
+          .sort((a, b) => {
+            return fs.statSync(path.join(SHORTS_DIR, b)).mtime - 
+                   fs.statSync(path.join(SHORTS_DIR, a)).mtime;
+          })
+          .slice(0, clips);
+        
+        res.json({ success: true, shorts });
+      } else {
+        res.status(500).json({ error: 'Video processing failed' });
+      }
+    });
+  } catch (error) {
+    console.error('Shorts generation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/shorts/list', (req, res) => {
+  try {
+    const shorts = fs.readdirSync(SHORTS_DIR)
+      .filter(f => f.endsWith('.mp4'))
+      .sort((a, b) => {
+        return fs.statSync(path.join(SHORTS_DIR, b)).mtime - 
+               fs.statSync(path.join(SHORTS_DIR, a)).mtime;
+      });
+    res.json(shorts);
+  } catch (error) {
+    res.json([]);
+  }
+});
+
+app.get('/api/shorts/download/:filename', (req, res) => {
+  const filepath = path.join(SHORTS_DIR, req.params.filename);
+  if (fs.existsSync(filepath)) {
+    res.sendFile(filepath);
+  } else {
+    res.status(404).send('Short not found');
   }
 });
 
