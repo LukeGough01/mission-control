@@ -3130,85 +3130,7 @@ function groupMemoryFiles(files) {
 }
 
 // GET /api/memory/list
-app.get('/api/memory/list', (req, res) => {
-  try {
-    const results = [];
 
-    // Add MEMORY.md (long-term)
-    try {
-      const stat = require('fs').statSync(MEMORY_MD);
-      results.push({
-        filename: 'MEMORY.md',
-        type: 'long-term',
-        date: null,
-        size: stat.size,
-        modified: stat.mtime.toISOString(),
-        label: 'Long-Term Memory',
-      });
-    } catch(e) {}
-
-    // Add daily memory files
-    try {
-      const files = require('fs').readdirSync(MEMORY_DIR);
-      files.filter(f => /^\d{4}-\d{2}-\d{2}(-.+)?\.md$/.test(f)).sort().reverse().forEach(f => {
-        try {
-          const stat = require('fs').statSync(path.join(MEMORY_DIR, f));
-          const dateMatch = f.match(/^(\d{4}-\d{2}-\d{2})/);
-          results.push({
-            filename: f,
-            type: 'daily',
-            date: dateMatch ? dateMatch[1] : null,
-            size: stat.size,
-            modified: stat.mtime.toISOString(),
-            label: dateMatch ? dateMatch[1] : f,
-            relative: dateMatch ? getRelativeDate(dateMatch[1]) : null,
-          });
-        } catch(e) {}
-      });
-    } catch(e) {}
-
-    // Add brain documents
-    try {
-      function scanBrain(dir, prefix) {
-        const entries = require('fs').readdirSync(dir, { withFileTypes: true });
-        entries.forEach(entry => {
-          const fullPath = path.join(dir, entry.name);
-          if (entry.isDirectory()) {
-            scanBrain(fullPath, prefix + entry.name + '/');
-          } else if (entry.name.endsWith('.md')) {
-            try {
-              const stat = require('fs').statSync(fullPath);
-              results.push({
-                filename: 'brain/' + prefix + entry.name,
-                type: 'brain',
-                date: null,
-                size: stat.size,
-                modified: stat.mtime.toISOString(),
-                label: entry.name.replace('.md', ''),
-                category: prefix.replace(/\/$/, '') || 'root',
-              });
-            } catch(e) {}
-          }
-        });
-      }
-      scanBrain(BRAIN_DIR, '');
-    } catch(e) {}
-
-    const dailyFiles = results.filter(r => r.type === 'daily');
-    const groups = groupMemoryFiles(dailyFiles);
-
-    res.json({
-      total: results.length,
-      files: results,
-      groups,
-      brainCategories: [...new Set(results.filter(r => r.type === 'brain').map(r => r.category))],
-    });
-  } catch(err) {
-    res.status(500).json({ error: 'Failed to list memory files: ' + err.message });
-  }
-});
-
-// GET /api/memory/read/:filename
 app.get('/api/memory/read/:filename(*)', (req, res) => {
   try {
     let filePath;
@@ -4320,6 +4242,16 @@ app.delete('/api/tasks/:id', async (req, res) => {
     res.status(404).json({ error: 'Task not found' });
   }
 });
+
+
+
+// Import Supabase memory API
+const memoryAPI = require('./memory-api-supabase');
+
+// Memory API Routes (Supabase - works on Vercel)
+app.get('/api/memory/list', memoryAPI.getMemoryList);
+app.get('/api/memory/read/:filename', memoryAPI.readMemoryDocument);
+app.post('/api/memory/append', memoryAPI.appendToDocument);
 
 
 // --─ Shorts API Routes --------------------------------------------------
