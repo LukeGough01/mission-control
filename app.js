@@ -3905,3 +3905,118 @@ app.post('/api/content/items/bulk', (req, res) => {
   saveContentItems();
   res.json({ success: true, added, total: contentItems.length });
 });
+
+// ============================================================
+// KANBAN / TASKS API (Supabase)
+// ============================================================
+
+const { createClient } = require('@supabase/supabase-js');
+
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://nmcrghqldrhgmjmceylf.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || 'sb_publishable_TfHw6Hx5vaupkcgsFUN5ZA_Ty3_X2R8';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Transform Supabase task to frontend format
+function transformTask(task) {
+  return {
+    id: task.id,
+    title: task.title,
+    desc: task.description || '',
+    priority: task.priority,
+    assignee: task.assignee || '',
+    column: task.column,
+    due: task.due_date || '',
+    created: new Date(task.created_at).getTime(),
+    updated: new Date(task.updated_at).getTime()
+  };
+}
+
+// GET /api/tasks - List all tasks
+app.get('/api/tasks', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    const tasks = data.map(transformTask);
+    res.json(tasks);
+  } catch (error) {
+    console.error('Error fetching tasks:', error);
+    res.status(500).json({ error: 'Failed to fetch tasks' });
+  }
+});
+
+// POST /api/tasks - Create new task
+app.post('/api/tasks', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('tasks')
+      .insert([{
+        id: 't' + Date.now(),
+        title: req.body.title || 'Untitled',
+        description: req.body.desc || null,
+        priority: req.body.priority || 'medium',
+        assignee: req.body.assignee || null,
+        column: req.body.column || 'ideas',
+        due_date: req.body.due || null
+      }])
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    res.json(transformTask(data));
+  } catch (error) {
+    console.error('Error creating task:', error);
+    res.status(500).json({ error: 'Failed to create task' });
+  }
+});
+
+// PATCH /api/tasks/:id - Update task
+app.patch('/api/tasks/:id', async (req, res) => {
+  try {
+    const updateData = {};
+    if (req.body.title !== undefined) updateData.title = req.body.title;
+    if (req.body.desc !== undefined) updateData.description = req.body.desc;
+    if (req.body.priority !== undefined) updateData.priority = req.body.priority;
+    if (req.body.assignee !== undefined) updateData.assignee = req.body.assignee || null;
+    if (req.body.column !== undefined) updateData.column = req.body.column;
+    if (req.body.due !== undefined) updateData.due_date = req.body.due || null;
+    updateData.updated_at = new Date().toISOString();
+    
+    const { data, error } = await supabase
+      .from('tasks')
+      .update(updateData)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    res.json(transformTask(data));
+  } catch (error) {
+    console.error('Error updating task:', error);
+    res.status(404).json({ error: 'Task not found' });
+  }
+});
+
+// DELETE /api/tasks/:id - Delete task
+app.delete('/api/tasks/:id', async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', req.params.id);
+    
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting task:', error);
+    res.status(404).json({ error: 'Task not found' });
+  }
+});
+

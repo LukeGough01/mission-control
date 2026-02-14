@@ -1,0 +1,134 @@
+[
+  {
+    "id": "t1",
+    "title": "Fix Kanban API (Server-Side)",
+    "desc": "Convert localStorage Kanban to server-side API so automation can update tasks",
+    "priority": "high",
+    "assignee": "Jarvis",
+    "column": "done",
+    "due": "",
+    "created": 1771032000000,
+    "updated": 1771041057178
+  },
+  {
+    "id": "t2",
+    "title": "Build YouTube Shorts Workflow",
+    "desc": "Extract 30-60s clips, auto-captions, vertical format, upload automation",
+    "priority": "high",
+    "assignee": "Jarvis",
+    "column": "done",
+    "due": "",
+    "created": 1771032000000,
+    "updated": 1771041154860
+  },
+  {
+    "id": "t3",
+    "title": "Sunday Video Launch (Pentesting Certs)",
+    "desc": "Upload video 11pm Saturday, launch 2pm Sunday with LinkedIn/Twitter/Newsletter",
+    "priority": "high",
+    "assignee": "Luke",
+    "column": "in-progress",
+    "due": "2026-02-16",
+    "created": 1770931200000,
+    "updated": 1771032000000
+  },
+  {
+    "id": "t4",
+    "title": "Coursera Contract Response",
+    "desc": "Send contract application response to Zane Joseph - $2,800 deal",
+    "priority": "high",
+    "assignee": "Luke",
+    "column": "review",
+    "due": "",
+    "created": 1770931200000,
+    "updated": 1771032000000
+  },
+  {
+    "id": "t5",
+    "title": "Google Drive Integration",
+    "desc": "Run: gog auth add luke@lukegough.com --services drive",
+    "priority": "medium",
+    "assignee": "Luke",
+    "column": "ideas",
+    "due": "",
+    "created": 1771032000000,
+    "updated": 1771032000000
+  },
+  {
+    "id": "t6",
+    "title": "Setup Shorts workflow",
+    "desc": "Established repurposing pipeline from long-form to Shorts",
+    "priority": "medium",
+    "assignee": "Luke",
+    "column": "in-progress",
+    "due": "",
+    "created": 1770931200000,
+    "updated": 1771032000000
+  },
+  {
+    "id": "t1771041506120",
+    "title": "Add Shorts Generator to Mission Control UI",
+    "desc": "Build web interface for shorts tool so Luke can generate clips from Mission Control without CLI",
+    "priority": "medium",
+    "assignee": "Jarvis",
+    "column": "done",
+    "due": "",
+    "created": 1771041506120,
+    "updated": 1771041848206
+  },
+  {
+    "id": "t1771041931307",
+    "title": "Setup Twitter API for Social Listening",
+    "desc": "Configure X API credentials for automated post tracking. API key already provided by Luke.",
+    "priority": "high",
+    "assignee": "Jarvis",
+    "column": "done",
+    "due": "",
+    "created": 1771041931307,
+    "updated": 1771041959732
+  },
+  {
+    "id": "t1771043483916",
+    "title": "Verify Vercel Deployment",
+    "desc": "Check mission-control-one-mu.vercel.app in 2-3 minutes to verify Shorts tab + API-based Kanban are live",
+    "priority": "high",
+    "assignee": "Jarvis",
+    "column": "in-progress",
+    "due": "",
+    "created": 1771043483916,
+    "updated": 1771043483916
+  },
+  {
+    "id": "t1771044765336",
+    "title": "Add $186.84 Commission to Invoice Tracker",
+    "desc": "CyberDefenders commission (overnight): 4x $1.80 + 2x $89.82 = $186.84. Notion update failed - needs manual entry.",
+    "priority": "high",
+    "assignee": "Luke",
+    "column": "in-progress",
+    "due": "2026-02-14",
+    "created": 1771044765336,
+    "updated": 1771044765336
+  },
+  {
+    "id": "t1771048202333",
+    "title": "Setup Notion Commission Tracking Database",
+    "desc": "Create proper Notion database with Total Earned property for automated commission tracking. Current: script logs only, needs manual entry.",
+    "priority": "medium",
+    "assignee": "Jarvis",
+    "column": "ideas",
+    "due": "",
+    "created": 1771048202333,
+    "updated": 1771048202333
+  },
+  {
+    "id": "t1771048531438",
+    "title": "Setup Supabase for Kanban Storage",
+    "desc": "Create Supabase project, run SQL to create tasks table, get API credentials. See SUPABASE-SETUP.md for full guide. Needed for Vercel deployment.",
+    "priority": "urgent",
+    "assignee": "Luke",
+    "column": "in-progress",
+    "due": "",
+    "created": 1771048531438,
+    "updated": 1771048531438
+  }
+]
